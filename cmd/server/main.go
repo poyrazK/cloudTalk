@@ -142,7 +142,9 @@ func main() {
 	r.Get("/ws", wsH.ServeHTTP)
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			slog.Error("health write", "err", err)
+		}
 	})
 
 	// --- Server ---
@@ -170,7 +172,9 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown", "err", err)
+	}
 }
 
 // fanOut routes a Kafka ChatEvent to the correct Hub broadcast method.
