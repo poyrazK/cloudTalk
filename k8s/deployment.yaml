@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudtalk-config
+data:
+  PORT: "8080"
+  KAFKA_BROKERS: "kafka-service:9092"
+  JWT_EXP_MINUTES: "15"
+  REFRESH_EXP_DAYS: "7"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudtalk
+  labels:
+    app: cloudtalk
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudtalk
+  template:
+    metadata:
+      labels:
+        app: cloudtalk
+    spec:
+      containers:
+        - name: cloudtalk
+          image: cloudtalk:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cloudtalk-config
+          env:
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudtalk-secrets
+                  key: DATABASE_DSN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cloudtalk-secrets
+                  key: JWT_SECRET
+            - name: KAFKA_GROUP_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name  # pod name as unique consumer group suffix
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtalk-service
+spec:
+  selector:
+    app: cloudtalk
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cloudtalk-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cloudtalk
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
