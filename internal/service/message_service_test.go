@@ -12,12 +12,12 @@ import (
 )
 
 type fakeMessageRoomRepo struct {
-	isMember      bool
-	isMemberErr   error
-	saveErr       error
-	listResp      []*model.Message
-	listErr       error
-	savedMessage  *model.Message
+	isMember     bool
+	isMemberErr  error
+	saveErr      error
+	listResp     []*model.Message
+	listErr      error
+	savedMessage *model.Message
 }
 
 func (f *fakeMessageRoomRepo) IsMember(_ context.Context, _, _ uuid.UUID) (bool, error) {
@@ -43,10 +43,10 @@ func (f *fakeMessageRoomRepo) ListMessages(_ context.Context, _ uuid.UUID, _ tim
 }
 
 type fakeMessageRepo struct {
-	saveErr   error
-	listResp  []*model.DirectMessage
-	listErr   error
-	savedDM   *model.DirectMessage
+	saveErr  error
+	listResp []*model.DirectMessage
+	listErr  error
+	savedDM  *model.DirectMessage
 }
 
 func (f *fakeMessageRepo) SaveDM(_ context.Context, m *model.DirectMessage) error {

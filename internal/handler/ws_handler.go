@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
@@ -19,7 +19,7 @@ import (
 type incomingMsg struct {
 	Type    string `json:"type"`
 	RoomID  string `json:"room_id,omitempty"`
-	To      string `json:"to,omitempty"`    // DM target user ID
+	To      string `json:"to,omitempty"` // DM target user ID
 	Content string `json:"content,omitempty"`
 	Typing  bool   `json:"typing,omitempty"`
 }
@@ -108,7 +108,9 @@ const (
 func (h *WSHandler) readPump(conn *websocket.Conn, client *hub.Client, ctx context.Context) {
 	defer conn.Close()
 	conn.SetReadLimit(maxMsgSize)
-	conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		return
+	}
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
@@ -135,16 +137,20 @@ func (h *WSHandler) writePump(conn *websocket.Conn, client *hub.Client) {
 	for {
 		select {
 		case evt, ok := <-client.Send:
-			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
 			if !ok {
-				conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := conn.WriteMessage(websocket.TextMessage, evt.Data); err != nil {
 				return
 			}
 		case <-ticker.C:
-			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
