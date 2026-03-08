@@ -1,0 +1,17 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# Go
+vendor/
+opencode.json
