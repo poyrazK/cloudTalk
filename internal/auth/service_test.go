@@ -12,15 +12,15 @@ import (
 )
 
 type fakeUserStore struct {
-	usersByEmail      map[string]*model.User
-	refreshByHash     map[string]*model.RefreshToken
-	createdUser       *model.User
-	deletedTokenHash  string
-	createErr         error
-	getByEmailErr     error
-	saveRefreshErr    error
-	getRefreshErr     error
-	deleteRefreshErr  error
+	usersByEmail     map[string]*model.User
+	refreshByHash    map[string]*model.RefreshToken
+	createdUser      *model.User
+	deletedTokenHash string
+	createErr        error
+	getByEmailErr    error
+	saveRefreshErr   error
+	getRefreshErr    error
+	deleteRefreshErr error
 }
 
 func newFakeUserStore() *fakeUserStore {
