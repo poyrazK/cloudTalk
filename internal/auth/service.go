@@ -46,7 +46,7 @@ func NewService(users userStore, secret string, accessExpMin, refreshExpDays int
 func (s *Service) Register(ctx context.Context, username, email, password string) (*model.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("hash password: %w", err)
 	}
 	u := &model.User{
 		ID:           uuid.New(),
@@ -99,19 +99,22 @@ func (s *Service) Refresh(ctx context.Context, rawRefresh string) (string, error
 
 // Logout invalidates the given refresh token.
 func (s *Service) Logout(ctx context.Context, rawRefresh string) error {
-	return s.users.DeleteRefreshToken(ctx, hashToken(rawRefresh))
+	if err := s.users.DeleteRefreshToken(ctx, hashToken(rawRefresh)); err != nil {
+		return fmt.Errorf("logout: %w", err)
+	}
+	return nil
 }
 
 // ValidateAccessToken parses and validates a JWT access token, returning the user ID.
 func (s *Service) ValidateAccessToken(tokenStr string) (uuid.UUID, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method")
+			return nil, errors.New("unexpected signing method")
 		}
 		return s.jwtSecret, nil
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("parse access token: %w", err)
 	}
 	claims, ok := token.Claims.(*jwt.RegisteredClaims)
 	if !ok || !token.Valid {
@@ -119,7 +122,7 @@ func (s *Service) ValidateAccessToken(tokenStr string) (uuid.UUID, error) {
 	}
 	id, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("parse token subject: %w", err)
 	}
 	return id, nil
 }
@@ -130,13 +133,17 @@ func (s *Service) generateAccessToken(userID uuid.UUID) (string, error) {
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.accessExpMin) * time.Minute)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
+	if err != nil {
+		return "", fmt.Errorf("sign access token: %w", err)
+	}
+	return tok, nil
 }
 
 func (s *Service) issueRefreshToken(ctx context.Context, userID uuid.UUID) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return "", fmt.Errorf("generate refresh token bytes: %w", err)
 	}
 	rawStr := hex.EncodeToString(raw)
 	rt := &model.RefreshToken{
@@ -146,7 +153,7 @@ func (s *Service) issueRefreshToken(ctx context.Context, userID uuid.UUID) (stri
 		ExpiresAt: time.Now().AddDate(0, 0, s.refreshExpDays),
 	}
 	if err := s.users.SaveRefreshToken(ctx, rt); err != nil {
-		return "", err
+		return "", fmt.Errorf("save refresh token: %w", err)
 	}
 	return rawStr, nil
 }
