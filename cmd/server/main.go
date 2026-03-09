@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,6 +27,13 @@ import (
 
 func main() {
 	logger.Init()
+	if err := run(); err != nil {
+		slog.Error("startup", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg := config.Load()
 
 	// --- Database ---
@@ -38,14 +46,12 @@ func main() {
 		MaxConnIdle: time.Duration(cfg.DBMaxConnIdle) * time.Second,
 	})
 	if err != nil {
-		slog.Error("db connect", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("db connect: %w", err)
 	}
 	defer pool.Close()
 
 	if err := db.Migrate(cfg.DatabaseDSN, "file://migrations"); err != nil {
-		slog.Error("db migrate", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("db migrate: %w", err)
 	}
 
 	// --- Repositories ---
@@ -59,8 +65,7 @@ func main() {
 	// --- Kafka producer ---
 	producer, err := kafka.NewProducer(cfg.KafkaBrokers)
 	if err != nil {
-		slog.Error("kafka producer", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("kafka producer: %w", err)
 	}
 	defer producer.Close()
 
@@ -78,8 +83,7 @@ func main() {
 		fanOut(h, topic, evt)
 	})
 	if err != nil {
-		slog.Error("kafka consumer", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("kafka consumer: %w", err)
 	}
 	consumerCtx, cancelConsumer := context.WithCancel(ctx)
 	consumer.Start(consumerCtx)
@@ -160,7 +164,6 @@ func main() {
 		slog.Info("cloudTalk listening", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server", "err", err)
-			os.Exit(1)
 		}
 	}()
 
@@ -175,6 +178,8 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown", "err", err)
 	}
+
+	return nil
 }
 
 // fanOut routes a Kafka ChatEvent to the correct Hub broadcast method.
