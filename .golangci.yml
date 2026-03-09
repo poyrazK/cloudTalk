@@ -2,20 +2,80 @@ run:
   timeout: 5m
   tests: true
 
+issues:
+  exclude-rules:
+    - path: internal/metrics/metrics.go
+      linters:
+        - gochecknoglobals
+
 linters:
   disable-all: true
   enable:
+    - asciicheck
+    - bidichk
     - bodyclose
+    - copyloopvar
+    - contextcheck
+    - containedctx
+    - cyclop
+    - depguard
+    - dupl
+    - durationcheck
     - errcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - gochecknoinits
+    - gochecknoglobals
+    - godot
+    - gocognit
     - gocritic
+    - gosec
     - gosimple
     - govet
+    - gocyclo
+    - gomodguard
     - ineffassign
+    - intrange
+    - maintidx
     - misspell
     - noctx
     - nolintlint
+    - perfsprint
+    - paralleltest
+    - prealloc
     - revive
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
+    - testifylint
+    - usestdlibvars
+    - nilerr
     - unconvert
+    - unparam
     - unused
+    - wrapcheck
     - whitespace
+    - thelper
+    - funlen
+
+linters-settings:
+  cyclop:
+    max-complexity: 18
+  funlen:
+    lines: 180
+    statements: 70
+  gocyclo:
+    min-complexity: 20
+  maintidx:
+    under: 10
+  depguard:
+    rules:
+      main:
+        files:
+          - $all
+        allow:
+          - $gostd
+          - github.com
+          - golang.org
+          - go.opentelemetry.io
