@@ -140,6 +140,7 @@ func run() error {
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 
 			r.Get("/dms/{userId}/messages", dmH.Messages)
+			r.Get("/dms/unread-counts", dmH.UnreadCounts)
 		})
 	})
 

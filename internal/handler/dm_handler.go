@@ -55,3 +55,13 @@ func (h *DMHandler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResp(w, http.StatusOK, msgs)
 }
+
+func (h *DMHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
+	callerID, _ := authsvc.UserIDFromContext(r.Context())
+	counts, err := h.messages.DMUnreadCounts(r.Context(), callerID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, counts)
+}

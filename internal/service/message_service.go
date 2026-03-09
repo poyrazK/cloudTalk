@@ -36,6 +36,7 @@ type messageRoomRepository interface {
 
 type messageRepository interface {
 	SaveDM(ctx context.Context, m *model.DirectMessage) error
+	ListDMUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.DMUnreadCount, error)
 	ListDMs(ctx context.Context, userA, userB uuid.UUID, before time.Time, limit int) ([]*model.DirectMessage, error)
 	GetDMByID(ctx context.Context, id uuid.UUID) (*model.DirectMessage, error)
 	MarkDMDelivered(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
@@ -132,6 +133,14 @@ func (s *MessageService) DMHistory(ctx context.Context, userA, userB uuid.UUID, 
 		return nil, fmt.Errorf("load dm history: %w", err)
 	}
 	return msgs, nil
+}
+
+func (s *MessageService) DMUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.DMUnreadCount, error) {
+	counts, err := s.messageRepo.ListDMUnreadCounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load dm unread counts: %w", err)
+	}
+	return counts, nil
 }
 
 func (s *MessageService) MarkDMDelivered(ctx context.Context, dmID, actorID uuid.UUID) (*model.DirectMessage, error) {

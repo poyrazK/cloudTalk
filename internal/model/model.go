@@ -46,6 +46,11 @@ type DirectMessage struct {
 	ReadAt      *time.Time `db:"read_at"      json:"read_at,omitempty"`
 }
 
+type DMUnreadCount struct {
+	UserID uuid.UUID `db:"user_id" json:"user_id"`
+	Count  int       `db:"count"   json:"count"`
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID `db:"id"`
 	UserID    uuid.UUID `db:"user_id"`

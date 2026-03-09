@@ -78,6 +78,7 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 			r.Post("/rooms/{id}/leave", roomH.Leave)
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 			r.Get("/dms/{userId}/messages", dmH.Messages)
+			r.Get("/dms/unread-counts", dmH.UnreadCounts)
 		})
 	})
 
@@ -156,6 +157,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 			r.Post("/rooms/{id}/leave", roomH.Leave)
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 			r.Get("/dms/{userId}/messages", dmH.Messages)
+			r.Get("/dms/unread-counts", dmH.UnreadCounts)
 		})
 	})
 

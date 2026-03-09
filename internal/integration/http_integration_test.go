@@ -173,6 +173,56 @@ func TestDMHistoryIncludesReceiptFieldsIntegration(t *testing.T) {
 	}
 }
 
+func TestDMUnreadCountsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	if err := env.ResetDB(context.Background()); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "counts-owner")
+	senderA := registerAndLogin(t, ts.URL, "counts-sender-a")
+	senderB := registerAndLogin(t, ts.URL, "counts-sender-b")
+
+	now := time.Now().UTC()
+	dmA1 := &model.DirectMessage{ID: uuid.New(), SenderID: senderA.UserID, ReceiverID: owner.UserID, Content: "a1", CreatedAt: now.Add(-4 * time.Minute)}
+	dmA2 := &model.DirectMessage{ID: uuid.New(), SenderID: senderA.UserID, ReceiverID: owner.UserID, Content: "a2", CreatedAt: now.Add(-3 * time.Minute)}
+	dmB1 := &model.DirectMessage{ID: uuid.New(), SenderID: senderB.UserID, ReceiverID: owner.UserID, Content: "b1", CreatedAt: now.Add(-2 * time.Minute)}
+	outbound := &model.DirectMessage{ID: uuid.New(), SenderID: owner.UserID, ReceiverID: senderA.UserID, Content: "out", CreatedAt: now.Add(-1 * time.Minute)}
+
+	for _, dm := range []*model.DirectMessage{dmA1, dmA2, dmB1, outbound} {
+		if err := app.Messages.SaveDM(context.Background(), dm); err != nil {
+			t.Fatalf("save dm %s: %v", dm.ID, err)
+		}
+	}
+
+	if err := app.Messages.MarkDMRead(context.Background(), dmA1.ID, owner.UserID, now); err != nil {
+		t.Fatalf("mark dm read: %v", err)
+	}
+
+	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/unread-counts", owner.AccessToken, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unread counts status: got=%d", resp.StatusCode)
+	}
+	counts := decodeJSON[[]model.DMUnreadCount](t, resp)
+	if len(counts) != 2 {
+		t.Fatalf("expected 2 unread-count entries, got %d", len(counts))
+	}
+
+	got := map[uuid.UUID]int{}
+	for _, c := range counts {
+		got[c.UserID] = c.Count
+	}
+	if got[senderA.UserID] != 1 {
+		t.Fatalf("expected senderA unread=1, got %d", got[senderA.UserID])
+	}
+	if got[senderB.UserID] != 1 {
+		t.Fatalf("expected senderB unread=1, got %d", got[senderB.UserID])
+	}
+}
+
 type authUser struct {
 	UserID      uuid.UUID
 	AccessToken string
