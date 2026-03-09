@@ -147,6 +147,19 @@ Requests where `:userId` equals the authenticated user are rejected with `400`.
 - `delivered_at` is set when the recipient WebSocket connection receives the DM event.
 - `read_at` is set when the recipient marks the DM as read over WebSocket.
 
+### GET /dms/unread-counts
+Returns unread inbound DM counts grouped by sender user.
+
+**Response** `200`
+```json
+[
+  { "user_id": "<uuid>", "count": 3 },
+  { "user_id": "<uuid>", "count": 1 }
+]
+```
+
+Only messages where the authenticated user is the `receiver_id` and `read_at` is null are counted.
+
 ---
 
 ## Misc
