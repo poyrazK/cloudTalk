@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -40,7 +41,7 @@ func NewMessageService(rr messageRoomRepository, mr messageRepository, p eventPu
 func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID uuid.UUID, content string) (*model.Message, error) {
 	ok, err := s.roomRepo.IsMember(ctx, roomID, senderID)
 	if err != nil || !ok {
-		return nil, fmt.Errorf("sender is not a room member")
+		return nil, errors.New("sender is not a room member")
 	}
 
 	msg := &model.Message{
@@ -51,7 +52,7 @@ func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID u
 		CreatedAt: time.Now(),
 	}
 	if err := s.roomRepo.SaveMessage(ctx, msg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("save room message: %w", err)
 	}
 
 	payload, err := json.Marshal(msg)
@@ -79,7 +80,7 @@ func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.U
 		CreatedAt:  time.Now(),
 	}
 	if err := s.messageRepo.SaveDM(ctx, dm); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("save dm: %w", err)
 	}
 
 	payload, err := json.Marshal(dm)
@@ -99,9 +100,17 @@ func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.U
 }
 
 func (s *MessageService) RoomHistory(ctx context.Context, roomID uuid.UUID, before time.Time, limit int) ([]*model.Message, error) {
-	return s.roomRepo.ListMessages(ctx, roomID, before, limit)
+	msgs, err := s.roomRepo.ListMessages(ctx, roomID, before, limit)
+	if err != nil {
+		return nil, fmt.Errorf("load room history: %w", err)
+	}
+	return msgs, nil
 }
 
 func (s *MessageService) DMHistory(ctx context.Context, userA, userB uuid.UUID, before time.Time, limit int) ([]*model.DirectMessage, error) {
-	return s.messageRepo.ListDMs(ctx, userA, userB, before, limit)
+	msgs, err := s.messageRepo.ListDMs(ctx, userA, userB, before, limit)
+	if err != nil {
+		return nil, fmt.Errorf("load dm history: %w", err)
+	}
+	return msgs, nil
 }
