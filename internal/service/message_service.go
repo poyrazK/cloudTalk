@@ -19,6 +19,13 @@ type MessageService struct {
 	producer    eventPublisher
 }
 
+var (
+	ErrRoomMembershipRequired = errors.New("room membership required")
+	ErrRoomMembershipCheck    = errors.New("room membership check failed")
+	ErrDMToSelfForbidden      = errors.New("cannot send dm to yourself")
+	ErrMessagePersistence     = errors.New("message persistence failed")
+)
+
 type messageRoomRepository interface {
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 	SaveMessage(ctx context.Context, m *model.Message) error
@@ -40,8 +47,11 @@ func NewMessageService(rr messageRoomRepository, mr messageRepository, p eventPu
 
 func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID uuid.UUID, content string) (*model.Message, error) {
 	ok, err := s.roomRepo.IsMember(ctx, roomID, senderID)
-	if err != nil || !ok {
-		return nil, errors.New("sender is not a room member")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrRoomMembershipCheck, err)
+	}
+	if !ok {
+		return nil, ErrRoomMembershipRequired
 	}
 
 	msg := &model.Message{
@@ -52,7 +62,7 @@ func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID u
 		CreatedAt: time.Now(),
 	}
 	if err := s.roomRepo.SaveMessage(ctx, msg); err != nil {
-		return nil, fmt.Errorf("save room message: %w", err)
+		return nil, fmt.Errorf("%w: save room message: %w", ErrMessagePersistence, err)
 	}
 
 	payload, err := json.Marshal(msg)
@@ -72,6 +82,10 @@ func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID u
 }
 
 func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.UUID, content string) (*model.DirectMessage, error) {
+	if senderID == receiverID {
+		return nil, ErrDMToSelfForbidden
+	}
+
 	dm := &model.DirectMessage{
 		ID:         uuid.New(),
 		SenderID:   senderID,
@@ -80,7 +94,7 @@ func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.U
 		CreatedAt:  time.Now(),
 	}
 	if err := s.messageRepo.SaveDM(ctx, dm); err != nil {
-		return nil, fmt.Errorf("save dm: %w", err)
+		return nil, fmt.Errorf("%w: save dm: %w", ErrMessagePersistence, err)
 	}
 
 	payload, err := json.Marshal(dm)

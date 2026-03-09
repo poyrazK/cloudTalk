@@ -102,6 +102,8 @@ Leave a room.
 ### GET /rooms/:id/messages
 Paginated message history, newest first.
 
+Only room members can access this endpoint. Non-members receive `403`.
+
 **Query params**
 
 | Param  | Type          | Default  | Description                          |
@@ -122,6 +124,8 @@ Paginated message history, newest first.
 
 ### GET /dms/:userId/messages
 Paginated DM history between the authenticated user and `:userId`, newest first.
+
+Requests where `:userId` equals the authenticated user are rejected with `400`.
 
 **Query params** — same as room messages (`before`, `limit`).
 

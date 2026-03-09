@@ -87,8 +87,20 @@ func TestMessageServiceSendRoomMessageRequiresMembership(t *testing.T) {
 	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakePublisher{})
 
 	_, err := svc.SendRoomMessage(context.Background(), uuid.New(), uuid.New(), "hello")
-	if err == nil {
-		t.Fatal("expected membership error")
+	if !errors.Is(err, ErrRoomMembershipRequired) {
+		t.Fatalf("expected ErrRoomMembershipRequired, got %v", err)
+	}
+}
+
+func TestMessageServiceSendRoomMessageMembershipCheckFailure(t *testing.T) {
+	t.Parallel()
+
+	rr := &fakeMessageRoomRepo{isMemberErr: errors.New("db timeout")}
+	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakePublisher{})
+
+	_, err := svc.SendRoomMessage(context.Background(), uuid.New(), uuid.New(), "hello")
+	if !errors.Is(err, ErrRoomMembershipCheck) {
+		t.Fatalf("expected ErrRoomMembershipCheck, got %v", err)
 	}
 }
 
@@ -126,6 +138,30 @@ func TestMessageServiceSendDMPublishFailureDoesNotFailCall(t *testing.T) {
 	}
 	if dm == nil || mr.savedDM == nil {
 		t.Fatal("expected dm persisted")
+	}
+}
+
+func TestMessageServiceSendDMToSelfForbidden(t *testing.T) {
+	t.Parallel()
+
+	uid := uuid.New()
+	svc := NewMessageService(&fakeMessageRoomRepo{}, &fakeMessageRepo{}, &fakePublisher{})
+
+	_, err := svc.SendDM(context.Background(), uid, uid, "ping")
+	if !errors.Is(err, ErrDMToSelfForbidden) {
+		t.Fatalf("expected ErrDMToSelfForbidden, got %v", err)
+	}
+}
+
+func TestMessageServiceSendDMPersistenceError(t *testing.T) {
+	t.Parallel()
+
+	mr := &fakeMessageRepo{saveErr: errors.New("write failed")}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	_, err := svc.SendDM(context.Background(), uuid.New(), uuid.New(), "ping")
+	if !errors.Is(err, ErrMessagePersistence) {
+		t.Fatalf("expected ErrMessagePersistence, got %v", err)
 	}
 }
 

@@ -34,11 +34,15 @@ Send a message to a room. The sender must be a room member.
 { "type": "message", "room_id": "<uuid>", "content": "Hello everyone!" }
 ```
 
+If the sender is not a room member, the server rejects the message and does not broadcast it.
+
 ### dm
 Send a direct message to a specific user.
 ```json
 { "type": "dm", "to": "<user_uuid>", "content": "Hey!" }
 ```
+
+Self DMs are rejected.
 
 ### typing
 Broadcast a typing indicator to all members of a room.
