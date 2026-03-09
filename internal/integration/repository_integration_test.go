@@ -161,6 +161,55 @@ func TestRepositoryDMReceiptUpdatesIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryDMUnreadCountsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	dmRepo := repository.NewMessageRepo(env.Pool)
+
+	owner := &model.User{ID: uuid.New(), Username: "owner", Email: fmt.Sprintf("owner-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	senderA := &model.User{ID: uuid.New(), Username: "sendera", Email: fmt.Sprintf("sendera-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	senderB := &model.User{ID: uuid.New(), Username: "senderb", Email: fmt.Sprintf("senderb-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	for _, u := range []*model.User{owner, senderA, senderB} {
+		if err := userRepo.Create(ctx, u); err != nil {
+			t.Fatalf("create user %s: %v", u.Username, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	dmA1 := insertDMAtWithID(t, env, senderA.ID, owner.ID, "a1", now.Add(-4*time.Minute))
+	_ = insertDMAtWithID(t, env, senderA.ID, owner.ID, "a2", now.Add(-3*time.Minute))
+	_ = insertDMAtWithID(t, env, senderB.ID, owner.ID, "b1", now.Add(-2*time.Minute))
+	_ = insertDMAtWithID(t, env, owner.ID, senderA.ID, "outbound", now.Add(-1*time.Minute))
+
+	if err := dmRepo.MarkDMRead(ctx, dmA1, owner.ID, now); err != nil {
+		t.Fatalf("mark one dm as read: %v", err)
+	}
+
+	counts, err := dmRepo.ListDMUnreadCounts(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("list dm unread counts: %v", err)
+	}
+	if len(counts) != 2 {
+		t.Fatalf("expected 2 conversation counts, got %d", len(counts))
+	}
+
+	got := map[uuid.UUID]int{}
+	for _, c := range counts {
+		got[c.UserID] = c.Count
+	}
+	if got[senderA.ID] != 1 {
+		t.Fatalf("expected senderA unread=1, got %d", got[senderA.ID])
+	}
+	if got[senderB.ID] != 1 {
+		t.Fatalf("expected senderB unread=1, got %d", got[senderB.ID])
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),
