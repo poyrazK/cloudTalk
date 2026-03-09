@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -176,50 +177,76 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 		}
 
 	case "message":
-		roomID, err := uuid.Parse(msg.RoomID)
-		if err != nil {
-			return
-		}
-		if err := validateContent(msg.Content); err != nil {
-			return
-		}
-		if _, err := h.messages.SendRoomMessage(ctx, roomID, client.UserID, msg.Content); err != nil {
-			slog.Error("ws: send room message", "err", err)
-		}
+		h.handleRoomMessage(ctx, client, msg)
 
 	case "dm":
-		toID, err := uuid.Parse(msg.To)
-		if err != nil {
-			return
-		}
-		if err := validateContent(msg.Content); err != nil {
-			return
-		}
-		if _, err := h.messages.SendDM(ctx, client.UserID, toID, msg.Content); err != nil {
-			slog.Error("ws: send dm", "err", err)
-		}
+		h.handleDM(ctx, client, msg)
 
 	case "typing":
-		roomID, err := uuid.Parse(msg.RoomID)
-		if err != nil {
-			return
+		h.handleTyping(client, msg)
+	}
+}
+
+func (h *WSHandler) handleRoomMessage(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	roomID, err := uuid.Parse(msg.RoomID)
+	if err != nil {
+		return
+	}
+	if err := validateContent(msg.Content); err != nil {
+		return
+	}
+	if _, err := h.messages.SendRoomMessage(ctx, roomID, client.UserID, msg.Content); err != nil {
+		switch {
+		case errors.Is(err, service.ErrRoomMembershipRequired):
+			slog.Warn("ws: room message forbidden", "user_id", client.UserID, "room_id", roomID)
+		case errors.Is(err, service.ErrRoomMembershipCheck), errors.Is(err, service.ErrMessagePersistence):
+			slog.Error("ws: send room message", "err", err)
+		default:
+			slog.Error("ws: send room message", "err", err)
 		}
-		payload, err := json.Marshal(map[string]interface{}{
-			"user_id": client.UserID.String(),
-			"room_id": roomID.String(),
-			"typing":  msg.Typing,
-		})
-		if err != nil {
-			slog.Error("ws: marshal typing payload", "err", err)
-			return
+	}
+}
+
+func (h *WSHandler) handleDM(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	toID, err := uuid.Parse(msg.To)
+	if err != nil {
+		return
+	}
+	if err := validateContent(msg.Content); err != nil {
+		return
+	}
+	if _, err := h.messages.SendDM(ctx, client.UserID, toID, msg.Content); err != nil {
+		switch {
+		case errors.Is(err, service.ErrDMToSelfForbidden):
+			slog.Warn("ws: self dm forbidden", "user_id", client.UserID)
+		case errors.Is(err, service.ErrMessagePersistence):
+			slog.Error("ws: send dm", "err", err)
+		default:
+			slog.Error("ws: send dm", "err", err)
 		}
-		if err := h.producer.Publish(kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
-			Type:     "typing",
-			RoomID:   roomID.String(),
-			SenderID: client.UserID.String(),
-			Payload:  payload,
-		}); err != nil {
-			slog.Error("ws: publish typing to kafka", "err", err)
-		}
+	}
+}
+
+func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
+	roomID, err := uuid.Parse(msg.RoomID)
+	if err != nil {
+		return
+	}
+	payload, err := json.Marshal(map[string]interface{}{
+		"user_id": client.UserID.String(),
+		"room_id": roomID.String(),
+		"typing":  msg.Typing,
+	})
+	if err != nil {
+		slog.Error("ws: marshal typing payload", "err", err)
+		return
+	}
+	if err := h.producer.Publish(kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
+		Type:     "typing",
+		RoomID:   roomID.String(),
+		SenderID: client.UserID.String(),
+		Payload:  payload,
+	}); err != nil {
+		slog.Error("ws: publish typing to kafka", "err", err)
 	}
 }
