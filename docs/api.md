@@ -114,7 +114,15 @@ Only room members can access this endpoint. Non-members receive `403`.
 **Response** `200` — array of message objects.
 ```json
 [
-  { "id": "<uuid>", "room_id": "<uuid>", "sender_id": "<uuid>", "content": "Hello", "created_at": "..." }
+  {
+    "id": "<uuid>",
+    "room_id": "<uuid>",
+    "sender_id": "<uuid>",
+    "content": "Hello",
+    "created_at": "...",
+    "edited_at": "...",
+    "deleted_at": "..."
+  }
 ]
 ```
 
@@ -139,13 +147,17 @@ Requests where `:userId` equals the authenticated user are rejected with `400`.
     "content": "Hey",
     "created_at": "...",
     "delivered_at": "...",
-    "read_at": "..."
+    "read_at": "...",
+    "edited_at": "...",
+    "deleted_at": "..."
   }
 ]
 ```
 
 - `delivered_at` is set when the recipient WebSocket connection receives the DM event.
 - `read_at` is set when the recipient marks the DM as read over WebSocket.
+- `edited_at` is set when the sender edits the message.
+- `deleted_at` is set when the sender soft deletes the message.
 
 ### GET /dms/unread-counts
 Returns unread inbound DM counts grouped by sender user.

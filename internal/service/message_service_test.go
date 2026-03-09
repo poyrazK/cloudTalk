@@ -15,9 +15,13 @@ type fakeMessageRoomRepo struct {
 	isMember     bool
 	isMemberErr  error
 	saveErr      error
+	getErr       error
+	updateErr    error
+	deleteErr    error
 	listResp     []*model.Message
 	listErr      error
 	savedMessage *model.Message
+	messageByID  *model.Message
 }
 
 func (f *fakeMessageRoomRepo) IsMember(_ context.Context, _, _ uuid.UUID) (bool, error) {
@@ -42,6 +46,39 @@ func (f *fakeMessageRoomRepo) ListMessages(_ context.Context, _ uuid.UUID, _ tim
 	return f.listResp, nil
 }
 
+func (f *fakeMessageRoomRepo) GetMessageByID(_ context.Context, _ uuid.UUID) (*model.Message, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.messageByID == nil {
+		return nil, errors.New("not found")
+	}
+	return f.messageByID, nil
+}
+
+func (f *fakeMessageRoomRepo) UpdateMessageContent(_ context.Context, _ uuid.UUID, content string, editedAt time.Time) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	if f.messageByID != nil {
+		f.messageByID.Content = content
+		t := editedAt
+		f.messageByID.EditedAt = &t
+	}
+	return nil
+}
+
+func (f *fakeMessageRoomRepo) SoftDeleteMessage(_ context.Context, _ uuid.UUID, deletedAt time.Time) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	if f.messageByID != nil && f.messageByID.DeletedAt == nil {
+		t := deletedAt
+		f.messageByID.DeletedAt = &t
+	}
+	return nil
+}
+
 type fakeMessageRepo struct {
 	saveErr          error
 	listResp         []*model.DirectMessage
@@ -52,6 +89,8 @@ type fakeMessageRepo struct {
 	getByIDErr       error
 	markDeliveredErr error
 	markReadErr      error
+	updateErr        error
+	deleteErr        error
 	dmByID           *model.DirectMessage
 }
 
@@ -111,6 +150,29 @@ func (f *fakeMessageRepo) MarkDMRead(_ context.Context, _ uuid.UUID, _ uuid.UUID
 			t := at
 			f.dmByID.ReadAt = &t
 		}
+	}
+	return nil
+}
+
+func (f *fakeMessageRepo) UpdateDMContent(_ context.Context, _ uuid.UUID, content string, editedAt time.Time) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	if f.dmByID != nil {
+		f.dmByID.Content = content
+		t := editedAt
+		f.dmByID.EditedAt = &t
+	}
+	return nil
+}
+
+func (f *fakeMessageRepo) SoftDeleteDM(_ context.Context, _ uuid.UUID, deletedAt time.Time) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	if f.dmByID != nil && f.dmByID.DeletedAt == nil {
+		t := deletedAt
+		f.dmByID.DeletedAt = &t
 	}
 	return nil
 }
@@ -297,5 +359,53 @@ func TestMessageServiceMarkDMReadSetsReadAndDelivered(t *testing.T) {
 	}
 	if updated.DeliveredAt == nil || updated.ReadAt == nil {
 		t.Fatal("expected delivered_at and read_at to be set")
+	}
+}
+
+func TestMessageServiceEditRoomMessage(t *testing.T) {
+	t.Parallel()
+
+	actor := uuid.New()
+	m := &model.Message{ID: uuid.New(), SenderID: actor, Content: "old"}
+	rr := &fakeMessageRoomRepo{messageByID: m}
+	pub := &fakePublisher{}
+	svc := NewMessageService(rr, &fakeMessageRepo{}, pub)
+
+	updated, err := svc.EditRoomMessage(context.Background(), m.ID, actor, "new")
+	if err != nil {
+		t.Fatalf("edit room message failed: %v", err)
+	}
+	if updated.EditedAt == nil || updated.Content != "new" {
+		t.Fatal("expected edited room message")
+	}
+	if pub.event.Type != "message_updated" {
+		t.Fatalf("expected message_updated event, got %q", pub.event.Type)
+	}
+}
+
+func TestMessageServiceDeleteDMForbiddenForNonSender(t *testing.T) {
+	t.Parallel()
+
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: uuid.New()}
+	mr := &fakeMessageRepo{dmByID: dm}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	_, err := svc.DeleteDM(context.Background(), dm.ID, dm.ReceiverID)
+	if !errors.Is(err, ErrMessageDeleteForbidden) {
+		t.Fatalf("expected ErrMessageDeleteForbidden, got %v", err)
+	}
+}
+
+func TestMessageServiceEditDMRejectedWhenDeleted(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), DeletedAt: &now}
+	mr := &fakeMessageRepo{dmByID: dm}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	_, err := svc.EditDM(context.Background(), dm.ID, dm.SenderID, "updated")
+	if !errors.Is(err, ErrMessageDeleted) {
+		t.Fatalf("expected ErrMessageDeleted, got %v", err)
 	}
 }
