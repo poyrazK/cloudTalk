@@ -26,8 +26,8 @@ func Load() *Config {
 	return &Config{
 		Port:           getEnv("PORT", "8080"),
 		DatabaseDSN:    getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
-		DBMaxConns:     int32(getEnvInt("DB_MAX_CONNS", 20)),
-		DBMinConns:     int32(getEnvInt("DB_MIN_CONNS", 2)),
+		DBMaxConns:     getEnvInt32("DB_MAX_CONNS", 20),
+		DBMinConns:     getEnvInt32("DB_MIN_CONNS", 2),
 		DBMaxConnLife:  getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
 		DBMaxConnIdle:  getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
 		KafkaBrokers:   []string{getEnv("KAFKA_BROKERS", "localhost:9092")},
@@ -51,6 +51,15 @@ func getEnvInt(key string, fallback int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+func getEnvInt32(key string, fallback int32) int32 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+			return int32(n)
 		}
 	}
 	return fallback

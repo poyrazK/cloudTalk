@@ -95,7 +95,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.readPump(r.Context(), conn, client)
 
 	h.hub.Unregister(client)
-	h.presence.SetOffline(context.Background(), userID)
+	h.presence.SetOffline(r.Context(), userID)
 }
 
 const (

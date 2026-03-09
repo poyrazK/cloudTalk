@@ -95,7 +95,7 @@ func run() error {
 		for {
 			select {
 			case <-ticker.C:
-				if err := userRepo.DeleteExpiredRefreshTokens(context.Background()); err != nil {
+				if err := userRepo.DeleteExpiredRefreshTokens(consumerCtx); err != nil {
 					slog.Error("token cleanup", "err", err)
 				}
 			case <-consumerCtx.Done():
