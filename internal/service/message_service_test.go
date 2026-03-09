@@ -46,6 +46,8 @@ type fakeMessageRepo struct {
 	saveErr          error
 	listResp         []*model.DirectMessage
 	listErr          error
+	unreadCountsResp []*model.DMUnreadCount
+	unreadCountsErr  error
 	savedDM          *model.DirectMessage
 	getByIDErr       error
 	markDeliveredErr error
@@ -66,6 +68,13 @@ func (f *fakeMessageRepo) ListDMs(_ context.Context, _, _ uuid.UUID, _ time.Time
 		return nil, f.listErr
 	}
 	return f.listResp, nil
+}
+
+func (f *fakeMessageRepo) ListDMUnreadCounts(_ context.Context, _ uuid.UUID) ([]*model.DMUnreadCount, error) {
+	if f.unreadCountsErr != nil {
+		return nil, f.unreadCountsErr
+	}
+	return f.unreadCountsResp, nil
 }
 
 func (f *fakeMessageRepo) GetDMByID(_ context.Context, _ uuid.UUID) (*model.DirectMessage, error) {
@@ -222,6 +231,21 @@ func TestMessageServiceHistoryDelegation(t *testing.T) {
 	dmMsgs, err := svc.DMHistory(context.Background(), uuid.New(), uuid.New(), now, 20)
 	if err != nil || len(dmMsgs) != 1 {
 		t.Fatalf("dm history delegation failed: err=%v len=%d", err, len(dmMsgs))
+	}
+}
+
+func TestMessageServiceDMUnreadCountsDelegation(t *testing.T) {
+	t.Parallel()
+
+	mr := &fakeMessageRepo{unreadCountsResp: []*model.DMUnreadCount{{UserID: uuid.New(), Count: 2}}}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	counts, err := svc.DMUnreadCounts(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("dm unread counts failed: %v", err)
+	}
+	if len(counts) != 1 || counts[0].Count != 2 {
+		t.Fatalf("unexpected unread counts result: %+v", counts)
 	}
 }
 

@@ -66,6 +66,34 @@ func (r *MessageRepo) MarkDMRead(ctx context.Context, dmID, receiverID uuid.UUID
 	return nil
 }
 
+func (r *MessageRepo) ListDMUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.DMUnreadCount, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT sender_id AS user_id, COUNT(*)::int AS count
+		 FROM direct_messages
+		 WHERE receiver_id=$1 AND read_at IS NULL
+		 GROUP BY sender_id
+		 ORDER BY count DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list dm unread counts: %w", err)
+	}
+	defer rows.Close()
+
+	var counts []*model.DMUnreadCount
+	for rows.Next() {
+		c := &model.DMUnreadCount{}
+		if err := rows.Scan(&c.UserID, &c.Count); err != nil {
+			return nil, fmt.Errorf("scan dm unread count row: %w", err)
+		}
+		counts = append(counts, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dm unread count rows: %w", err)
+	}
+	return counts, nil
+}
+
 // ListDMs returns paginated DMs between two users, ordered newest-first.
 func (r *MessageRepo) ListDMs(ctx context.Context, userA, userB uuid.UUID, before time.Time, limit int) ([]*model.DirectMessage, error) {
 	rows, err := r.db.Query(ctx,
