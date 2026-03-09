@@ -92,7 +92,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.presence.SetOnline(r.Context(), userID)
 
 	go h.writePump(conn, client)
-	h.readPump(conn, client, r.Context())
+	h.readPump(r.Context(), conn, client)
 
 	h.hub.Unregister(client)
 	h.presence.SetOffline(context.Background(), userID)
@@ -105,7 +105,7 @@ const (
 	maxMsgSize = 4096
 )
 
-func (h *WSHandler) readPump(conn *websocket.Conn, client *hub.Client, ctx context.Context) {
+func (h *WSHandler) readPump(ctx context.Context, conn *websocket.Conn, client *hub.Client) {
 	defer conn.Close()
 	conn.SetReadLimit(maxMsgSize)
 	if err := conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {

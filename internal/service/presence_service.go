@@ -36,14 +36,14 @@ func NewPresenceService(p eventPublisher, h presenceHub) *PresenceService {
 	}
 }
 
-func (s *PresenceService) SetOnline(ctx context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOnline(_ context.Context, userID uuid.UUID) {
 	s.mu.Lock()
 	s.online[userID] = struct{}{}
 	s.mu.Unlock()
 	s.publishPresence(userID, "online")
 }
 
-func (s *PresenceService) SetOffline(ctx context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
 	s.mu.Lock()
 	delete(s.online, userID)
 	s.mu.Unlock()
