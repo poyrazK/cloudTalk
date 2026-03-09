@@ -97,6 +97,70 @@ func TestRepositoryDMHistoryIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryDMReceiptUpdatesIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	dmRepo := repository.NewMessageRepo(env.Pool)
+
+	sender := &model.User{ID: uuid.New(), Username: "sender", Email: fmt.Sprintf("sender-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	receiver := &model.User{ID: uuid.New(), Username: "receiver", Email: fmt.Sprintf("receiver-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	if err := userRepo.Create(ctx, sender); err != nil {
+		t.Fatalf("create sender: %v", err)
+	}
+	if err := userRepo.Create(ctx, receiver); err != nil {
+		t.Fatalf("create receiver: %v", err)
+	}
+
+	dmID := insertDMAtWithID(t, env, sender.ID, receiver.ID, "receipt", time.Now().UTC().Add(-1*time.Minute))
+
+	firstDelivered := time.Now().UTC().Add(-30 * time.Second).Truncate(time.Second)
+	if err := dmRepo.MarkDMDelivered(ctx, dmID, receiver.ID, firstDelivered); err != nil {
+		t.Fatalf("mark delivered: %v", err)
+	}
+
+	got, err := dmRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		t.Fatalf("get dm after delivered: %v", err)
+	}
+	if got.DeliveredAt == nil {
+		t.Fatal("expected delivered_at to be set")
+	}
+
+	secondDelivered := firstDelivered.Add(20 * time.Second)
+	if err := dmRepo.MarkDMDelivered(ctx, dmID, receiver.ID, secondDelivered); err != nil {
+		t.Fatalf("mark delivered second time: %v", err)
+	}
+
+	got, err = dmRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		t.Fatalf("get dm second delivered check: %v", err)
+	}
+	if got.DeliveredAt == nil || !got.DeliveredAt.Equal(firstDelivered) {
+		t.Fatalf("expected delivered_at to remain first value, got=%v want=%v", got.DeliveredAt, firstDelivered)
+	}
+
+	readAt := firstDelivered.Add(40 * time.Second)
+	if err := dmRepo.MarkDMRead(ctx, dmID, receiver.ID, readAt); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	got, err = dmRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		t.Fatalf("get dm after read: %v", err)
+	}
+	if got.ReadAt == nil || !got.ReadAt.Equal(readAt) {
+		t.Fatalf("expected read_at=%v, got=%v", readAt, got.ReadAt)
+	}
+	if got.DeliveredAt == nil || !got.DeliveredAt.Equal(firstDelivered) {
+		t.Fatalf("expected delivered_at unchanged=%v, got=%v", firstDelivered, got.DeliveredAt)
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),
@@ -117,6 +181,19 @@ func insertDMAt(t *testing.T, env *itest.Env, senderID, receiverID uuid.UUID, co
 	if err != nil {
 		t.Fatalf("insert dm: %v", err)
 	}
+}
+
+func insertDMAtWithID(t *testing.T, env *itest.Env, senderID, receiverID uuid.UUID, content string, createdAt time.Time) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	_, err := env.Pool.Exec(context.Background(),
+		`INSERT INTO direct_messages (id, sender_id, receiver_id, content, created_at) VALUES ($1,$2,$3,$4,$5)`,
+		id, senderID, receiverID, content, createdAt,
+	)
+	if err != nil {
+		t.Fatalf("insert dm with id: %v", err)
+	}
+	return id
 }
 
 func firstContent(msgs []*model.Message) string {
