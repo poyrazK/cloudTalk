@@ -19,7 +19,10 @@ func (r *RoomRepo) Create(ctx context.Context, room *model.Room) error {
 		`INSERT INTO rooms (id, name, description, created_by) VALUES ($1,$2,$3,$4)`,
 		room.ID, room.Name, room.Description, room.CreatedBy,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("create room: %w", err)
+	}
+	return nil
 }
 
 func (r *RoomRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
@@ -40,7 +43,7 @@ func (r *RoomRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.R
 		 WHERE m.user_id=$1 ORDER BY r.created_at DESC`, userID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list rooms by user: %w", err)
 	}
 	defer rows.Close()
 
@@ -48,11 +51,14 @@ func (r *RoomRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.R
 	for rows.Next() {
 		room := &model.Room{}
 		if err := rows.Scan(&room.ID, &room.Name, &room.Description, &room.CreatedBy, &room.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan room row: %w", err)
 		}
 		rooms = append(rooms, room)
 	}
-	return rooms, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room rows: %w", err)
+	}
+	return rooms, nil
 }
 
 func (r *RoomRepo) AddMember(ctx context.Context, roomID, userID uuid.UUID) error {
@@ -60,14 +66,20 @@ func (r *RoomRepo) AddMember(ctx context.Context, roomID, userID uuid.UUID) erro
 		`INSERT INTO room_members (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
 		roomID, userID,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("add room member: %w", err)
+	}
+	return nil
 }
 
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("remove room member: %w", err)
+	}
+	return nil
 }
 
 func (r *RoomRepo) IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error) {
@@ -76,7 +88,10 @@ func (r *RoomRepo) IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool
 		`SELECT EXISTS(SELECT 1 FROM room_members WHERE room_id=$1 AND user_id=$2)`,
 		roomID, userID,
 	).Scan(&exists)
-	return exists, err
+	if err != nil {
+		return false, fmt.Errorf("check room membership: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before time.Time, limit int) ([]*model.Message, error) {
@@ -87,7 +102,7 @@ func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before ti
 		roomID, before, limit,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list room messages: %w", err)
 	}
 	defer rows.Close()
 
@@ -95,11 +110,14 @@ func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before ti
 	for rows.Next() {
 		m := &model.Message{}
 		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderID, &m.Content, &m.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan room message row: %w", err)
 		}
 		msgs = append(msgs, m)
 	}
-	return msgs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room message rows: %w", err)
+	}
+	return msgs, nil
 }
 
 func (r *RoomRepo) SaveMessage(ctx context.Context, m *model.Message) error {
@@ -107,5 +125,8 @@ func (r *RoomRepo) SaveMessage(ctx context.Context, m *model.Message) error {
 		`INSERT INTO messages (id, room_id, sender_id, content) VALUES ($1,$2,$3,$4)`,
 		m.ID, m.RoomID, m.SenderID, m.Content,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("save room message: %w", err)
+	}
+	return nil
 }
