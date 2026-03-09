@@ -42,6 +42,12 @@ Send a direct message to a specific user.
 { "type": "dm", "to": "<user_uuid>", "content": "Hey!" }
 ```
 
+### read_dm
+Mark a DM as read. Only the receiver of the DM can do this.
+```json
+{ "type": "read_dm", "dm_id": "<dm_uuid>" }
+```
+
 Self DMs are rejected.
 
 ### typing
@@ -79,6 +85,24 @@ A direct message sent to you (or by you, echoed back).
   }
 }
 ```
+
+### dm_receipt
+Delivery/read receipt for a direct message.
+```json
+{
+  "type": "dm_receipt",
+  "payload": {
+    "dm_id": "<uuid>",
+    "sender_id": "<uuid>",
+    "receiver_id": "<uuid>",
+    "delivered_at": "2026-03-04T13:00:05Z",
+    "read_at": "2026-03-04T13:01:10Z"
+  }
+}
+```
+
+`delivered_at` is set when the recipient WebSocket connection receives the DM event.
+`read_at` is set when the recipient sends `read_dm`.
 
 ### typing
 A user started or stopped typing in a room.

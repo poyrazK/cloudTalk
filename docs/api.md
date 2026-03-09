@@ -132,9 +132,20 @@ Requests where `:userId` equals the authenticated user are rejected with `400`.
 **Response** `200` — array of direct message objects.
 ```json
 [
-  { "id": "<uuid>", "sender_id": "<uuid>", "receiver_id": "<uuid>", "content": "Hey", "created_at": "..." }
+  {
+    "id": "<uuid>",
+    "sender_id": "<uuid>",
+    "receiver_id": "<uuid>",
+    "content": "Hey",
+    "created_at": "...",
+    "delivered_at": "...",
+    "read_at": "..."
+  }
 ]
 ```
+
+- `delivered_at` is set when the recipient WebSocket connection receives the DM event.
+- `read_at` is set when the recipient marks the DM as read over WebSocket.
 
 ---
 
