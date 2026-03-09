@@ -12,7 +12,7 @@ func TestMiddlewareUnauthorizedWithoutBearer(t *testing.T) {
 	svc := NewService(newFakeUserStore(), "secret", 15, 7)
 	mw := Middleware(svc)
 
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
