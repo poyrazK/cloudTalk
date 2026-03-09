@@ -79,6 +79,8 @@ func (f *fakeUserStore) DeleteRefreshToken(_ context.Context, tokenHash string) 
 }
 
 func TestServiceRegisterHashesPassword(t *testing.T) {
+	t.Parallel()
+
 	store := newFakeUserStore()
 	svc := NewService(store, "secret", 15, 7)
 
@@ -98,6 +100,8 @@ func TestServiceRegisterHashesPassword(t *testing.T) {
 }
 
 func TestServiceLoginSuccessAndRefreshStored(t *testing.T) {
+	t.Parallel()
+
 	store := newFakeUserStore()
 	hash, err := bcrypt.GenerateFromPassword([]byte("pass12345"), bcrypt.DefaultCost)
 	if err != nil {
@@ -123,6 +127,8 @@ func TestServiceLoginSuccessAndRefreshStored(t *testing.T) {
 }
 
 func TestServiceLoginInvalidCredentials(t *testing.T) {
+	t.Parallel()
+
 	store := newFakeUserStore()
 	svc := NewService(store, "secret", 15, 7)
 
@@ -133,6 +139,8 @@ func TestServiceLoginInvalidCredentials(t *testing.T) {
 }
 
 func TestServiceRefreshExpiredToken(t *testing.T) {
+	t.Parallel()
+
 	store := newFakeUserStore()
 	svc := NewService(store, "secret", 15, 7)
 	uid := uuid.New()
@@ -150,6 +158,8 @@ func TestServiceRefreshExpiredToken(t *testing.T) {
 }
 
 func TestServiceRefreshSuccess(t *testing.T) {
+	t.Parallel()
+
 	store := newFakeUserStore()
 	svc := NewService(store, "secret", 15, 7)
 	uid := uuid.New()
@@ -171,6 +181,8 @@ func TestServiceRefreshSuccess(t *testing.T) {
 }
 
 func TestServiceValidateAccessTokenInvalid(t *testing.T) {
+	t.Parallel()
+
 	svc := NewService(newFakeUserStore(), "secret", 15, 7)
 	if _, err := svc.ValidateAccessToken("not-a-jwt"); err == nil {
 		t.Fatal("expected parse error")

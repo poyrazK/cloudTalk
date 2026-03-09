@@ -9,6 +9,8 @@ import (
 )
 
 func TestMiddlewareUnauthorizedWithoutBearer(t *testing.T) {
+	t.Parallel()
+
 	svc := NewService(newFakeUserStore(), "secret", 15, 7)
 	mw := Middleware(svc)
 
@@ -26,6 +28,8 @@ func TestMiddlewareUnauthorizedWithoutBearer(t *testing.T) {
 }
 
 func TestMiddlewareInjectsUserID(t *testing.T) {
+	t.Parallel()
+
 	svc := NewService(newFakeUserStore(), "secret", 15, 7)
 	uid := uuid.New()
 	tok, err := svc.generateAccessToken(uid)

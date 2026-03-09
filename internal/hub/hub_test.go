@@ -7,6 +7,8 @@ import (
 )
 
 func TestHubRegisterBroadcastAndUnregister(t *testing.T) {
+	t.Parallel()
+
 	h := New()
 	userID := uuid.New()
 	roomID := uuid.New()
