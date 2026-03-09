@@ -24,6 +24,8 @@ var (
 	ErrRoomMembershipCheck    = errors.New("room membership check failed")
 	ErrDMToSelfForbidden      = errors.New("cannot send dm to yourself")
 	ErrMessagePersistence     = errors.New("message persistence failed")
+	ErrDMNotFound             = errors.New("dm not found")
+	ErrDMReceiptForbidden     = errors.New("dm receipt forbidden")
 )
 
 type messageRoomRepository interface {
@@ -35,6 +37,9 @@ type messageRoomRepository interface {
 type messageRepository interface {
 	SaveDM(ctx context.Context, m *model.DirectMessage) error
 	ListDMs(ctx context.Context, userA, userB uuid.UUID, before time.Time, limit int) ([]*model.DirectMessage, error)
+	GetDMByID(ctx context.Context, id uuid.UUID) (*model.DirectMessage, error)
+	MarkDMDelivered(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
+	MarkDMRead(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
 }
 
 type eventPublisher interface {
@@ -127,4 +132,66 @@ func (s *MessageService) DMHistory(ctx context.Context, userA, userB uuid.UUID, 
 		return nil, fmt.Errorf("load dm history: %w", err)
 	}
 	return msgs, nil
+}
+
+func (s *MessageService) MarkDMDelivered(ctx context.Context, dmID, actorID uuid.UUID) (*model.DirectMessage, error) {
+	dm, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDMNotFound, err)
+	}
+	if dm.ReceiverID != actorID {
+		return nil, ErrDMReceiptForbidden
+	}
+	now := time.Now().UTC()
+	if err := s.messageRepo.MarkDMDelivered(ctx, dmID, actorID, now); err != nil {
+		return nil, fmt.Errorf("%w: mark dm delivered: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload dm after delivered: %w", ErrMessagePersistence, err)
+	}
+	s.publishDMReceipt(updated)
+	return updated, nil
+}
+
+func (s *MessageService) MarkDMRead(ctx context.Context, dmID, actorID uuid.UUID) (*model.DirectMessage, error) {
+	dm, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDMNotFound, err)
+	}
+	if dm.ReceiverID != actorID {
+		return nil, ErrDMReceiptForbidden
+	}
+	now := time.Now().UTC()
+	if err := s.messageRepo.MarkDMRead(ctx, dmID, actorID, now); err != nil {
+		return nil, fmt.Errorf("%w: mark dm read: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload dm after read: %w", ErrMessagePersistence, err)
+	}
+	s.publishDMReceipt(updated)
+	return updated, nil
+}
+
+func (s *MessageService) publishDMReceipt(dm *model.DirectMessage) {
+	payload, err := json.Marshal(map[string]interface{}{
+		"dm_id":        dm.ID.String(),
+		"sender_id":    dm.SenderID.String(),
+		"receiver_id":  dm.ReceiverID.String(),
+		"delivered_at": dm.DeliveredAt,
+		"read_at":      dm.ReadAt,
+	})
+	if err != nil {
+		slog.Error("marshal dm receipt", "err", err)
+		return
+	}
+	if err := s.producer.Publish(kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
+		Type:     "dm_receipt",
+		SenderID: dm.SenderID.String(),
+		ToUserID: dm.ReceiverID.String(),
+		Payload:  payload,
+	}); err != nil {
+		slog.Error("publish dm receipt", "err", err)
+	}
 }

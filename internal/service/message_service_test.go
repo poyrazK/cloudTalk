@@ -43,10 +43,14 @@ func (f *fakeMessageRoomRepo) ListMessages(_ context.Context, _ uuid.UUID, _ tim
 }
 
 type fakeMessageRepo struct {
-	saveErr  error
-	listResp []*model.DirectMessage
-	listErr  error
-	savedDM  *model.DirectMessage
+	saveErr          error
+	listResp         []*model.DirectMessage
+	listErr          error
+	savedDM          *model.DirectMessage
+	getByIDErr       error
+	markDeliveredErr error
+	markReadErr      error
+	dmByID           *model.DirectMessage
 }
 
 func (f *fakeMessageRepo) SaveDM(_ context.Context, m *model.DirectMessage) error {
@@ -62,6 +66,44 @@ func (f *fakeMessageRepo) ListDMs(_ context.Context, _, _ uuid.UUID, _ time.Time
 		return nil, f.listErr
 	}
 	return f.listResp, nil
+}
+
+func (f *fakeMessageRepo) GetDMByID(_ context.Context, _ uuid.UUID) (*model.DirectMessage, error) {
+	if f.getByIDErr != nil {
+		return nil, f.getByIDErr
+	}
+	if f.dmByID == nil {
+		return nil, errors.New("not found")
+	}
+	return f.dmByID, nil
+}
+
+func (f *fakeMessageRepo) MarkDMDelivered(_ context.Context, _ uuid.UUID, _ uuid.UUID, at time.Time) error {
+	if f.markDeliveredErr != nil {
+		return f.markDeliveredErr
+	}
+	if f.dmByID != nil && f.dmByID.DeliveredAt == nil {
+		t := at
+		f.dmByID.DeliveredAt = &t
+	}
+	return nil
+}
+
+func (f *fakeMessageRepo) MarkDMRead(_ context.Context, _ uuid.UUID, _ uuid.UUID, at time.Time) error {
+	if f.markReadErr != nil {
+		return f.markReadErr
+	}
+	if f.dmByID != nil {
+		if f.dmByID.DeliveredAt == nil {
+			t := at
+			f.dmByID.DeliveredAt = &t
+		}
+		if f.dmByID.ReadAt == nil {
+			t := at
+			f.dmByID.ReadAt = &t
+		}
+	}
+	return nil
 }
 
 type fakePublisher struct {
@@ -180,5 +222,56 @@ func TestMessageServiceHistoryDelegation(t *testing.T) {
 	dmMsgs, err := svc.DMHistory(context.Background(), uuid.New(), uuid.New(), now, 20)
 	if err != nil || len(dmMsgs) != 1 {
 		t.Fatalf("dm history delegation failed: err=%v len=%d", err, len(dmMsgs))
+	}
+}
+
+func TestMessageServiceMarkDMDelivered(t *testing.T) {
+	t.Parallel()
+
+	receiverID := uuid.New()
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: receiverID}
+	mr := &fakeMessageRepo{dmByID: dm}
+	pub := &fakePublisher{}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, pub)
+
+	updated, err := svc.MarkDMDelivered(context.Background(), dm.ID, receiverID)
+	if err != nil {
+		t.Fatalf("mark delivered failed: %v", err)
+	}
+	if updated.DeliveredAt == nil {
+		t.Fatal("expected delivered_at to be set")
+	}
+	if pub.publishN == 0 || pub.event.Type != "dm_receipt" {
+		t.Fatal("expected dm_receipt publish")
+	}
+}
+
+func TestMessageServiceMarkDMReadForbiddenForSender(t *testing.T) {
+	t.Parallel()
+
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: uuid.New()}
+	mr := &fakeMessageRepo{dmByID: dm}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	_, err := svc.MarkDMRead(context.Background(), dm.ID, dm.SenderID)
+	if !errors.Is(err, ErrDMReceiptForbidden) {
+		t.Fatalf("expected ErrDMReceiptForbidden, got %v", err)
+	}
+}
+
+func TestMessageServiceMarkDMReadSetsReadAndDelivered(t *testing.T) {
+	t.Parallel()
+
+	receiverID := uuid.New()
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: receiverID}
+	mr := &fakeMessageRepo{dmByID: dm}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+
+	updated, err := svc.MarkDMRead(context.Background(), dm.ID, receiverID)
+	if err != nil {
+		t.Fatalf("mark read failed: %v", err)
+	}
+	if updated.DeliveredAt == nil || updated.ReadAt == nil {
+		t.Fatal("expected delivered_at and read_at to be set")
 	}
 }
