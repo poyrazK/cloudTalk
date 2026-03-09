@@ -20,9 +20,15 @@ import (
 type incomingMsg struct {
 	Type    string `json:"type"`
 	RoomID  string `json:"room_id,omitempty"`
+	DMID    string `json:"dm_id,omitempty"`
 	To      string `json:"to,omitempty"` // DM target user ID
 	Content string `json:"content,omitempty"`
 	Typing  bool   `json:"typing,omitempty"`
+}
+
+type outgoingMsg struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // WSHandler upgrades HTTP connections to WebSocket and drives the read/write pumps.
@@ -92,7 +98,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.hub.Register(client)
 	h.presence.SetOnline(r.Context(), userID)
 
-	go h.writePump(conn, client)
+	go h.writePump(r.Context(), conn, client)
 	h.readPump(r.Context(), conn, client)
 
 	h.hub.Unregister(client)
@@ -128,7 +134,7 @@ func (h *WSHandler) readPump(ctx context.Context, conn *websocket.Conn, client *
 	}
 }
 
-func (h *WSHandler) writePump(conn *websocket.Conn, client *hub.Client) {
+func (h *WSHandler) writePump(ctx context.Context, conn *websocket.Conn, client *hub.Client) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -148,6 +154,7 @@ func (h *WSHandler) writePump(conn *websocket.Conn, client *hub.Client) {
 			if err := conn.WriteMessage(websocket.TextMessage, evt.Data); err != nil {
 				return
 			}
+			h.handlePostWriteDMDelivery(ctx, client, evt.Data)
 		case <-ticker.C:
 			if err := conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 				return
@@ -182,8 +189,46 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 	case "dm":
 		h.handleDM(ctx, client, msg)
 
+	case "read_dm":
+		h.handleReadDM(ctx, client, msg)
+
 	case "typing":
 		h.handleTyping(client, msg)
+	}
+}
+
+func (h *WSHandler) handlePostWriteDMDelivery(ctx context.Context, client *hub.Client, raw []byte) {
+	var out outgoingMsg
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return
+	}
+	if out.Type != "dm" {
+		return
+	}
+
+	var dm struct {
+		ID         string `json:"id"`
+		ReceiverID string `json:"receiver_id"`
+	}
+	if err := json.Unmarshal(out.Payload, &dm); err != nil {
+		return
+	}
+	if dm.ReceiverID != client.UserID.String() {
+		return
+	}
+
+	dmID, err := uuid.Parse(dm.ID)
+	if err != nil {
+		return
+	}
+
+	if _, err := h.messages.MarkDMDelivered(ctx, dmID, client.UserID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrDMReceiptForbidden), errors.Is(err, service.ErrDMNotFound):
+			return
+		default:
+			slog.Error("ws: mark dm delivered", "err", err)
+		}
 	}
 }
 
@@ -223,6 +268,24 @@ func (h *WSHandler) handleDM(ctx context.Context, client *hub.Client, msg incomi
 			slog.Error("ws: send dm", "err", err)
 		default:
 			slog.Error("ws: send dm", "err", err)
+		}
+	}
+}
+
+func (h *WSHandler) handleReadDM(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	dmID, err := uuid.Parse(msg.DMID)
+	if err != nil {
+		return
+	}
+
+	if _, err := h.messages.MarkDMRead(ctx, dmID, client.UserID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrDMReceiptForbidden):
+			slog.Warn("ws: dm read forbidden", "user_id", client.UserID, "dm_id", dmID)
+		case errors.Is(err, service.ErrDMNotFound):
+			slog.Warn("ws: dm not found", "user_id", client.UserID, "dm_id", dmID)
+		default:
+			slog.Error("ws: mark dm read", "err", err)
 		}
 	}
 }

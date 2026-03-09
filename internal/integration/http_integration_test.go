@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/model"
@@ -126,6 +127,49 @@ func TestRoomAndDMHistoryAuthorizationIntegration(t *testing.T) {
 	dms := decodeJSON[[]model.DirectMessage](t, dmHistoryResp)
 	if len(dms) == 0 {
 		t.Fatal("expected at least one dm")
+	}
+}
+
+func TestDMHistoryIncludesReceiptFieldsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	if err := env.ResetDB(context.Background()); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	sender := registerAndLogin(t, ts.URL, "receipts-sender")
+	receiver := registerAndLogin(t, ts.URL, "receipts-receiver")
+
+	dm := &model.DirectMessage{ID: uuid.New(), SenderID: sender.UserID, ReceiverID: receiver.UserID, Content: "with receipts"}
+	if err := app.Messages.SaveDM(context.Background(), dm); err != nil {
+		t.Fatalf("save dm: %v", err)
+	}
+
+	deliveredAt := time.Now().UTC().Add(-30 * time.Second).Truncate(time.Second)
+	readAt := deliveredAt.Add(15 * time.Second)
+	if err := app.Messages.MarkDMDelivered(context.Background(), dm.ID, receiver.UserID, deliveredAt); err != nil {
+		t.Fatalf("mark delivered: %v", err)
+	}
+	if err := app.Messages.MarkDMRead(context.Background(), dm.ID, receiver.UserID, readAt); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	historyResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/"+receiver.UserID.String()+"/messages?limit=10", sender.AccessToken, nil)
+	if historyResp.StatusCode != http.StatusOK {
+		t.Fatalf("dm history status: got=%d", historyResp.StatusCode)
+	}
+	dms := decodeJSON[[]model.DirectMessage](t, historyResp)
+	if len(dms) == 0 {
+		t.Fatal("expected at least one dm")
+	}
+	got := dms[0]
+	if got.DeliveredAt == nil {
+		t.Fatal("expected delivered_at in dm history")
+	}
+	if got.ReadAt == nil {
+		t.Fatal("expected read_at in dm history")
 	}
 }
 

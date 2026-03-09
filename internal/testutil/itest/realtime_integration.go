@@ -227,7 +227,7 @@ func realtimeFanOut(h *hub.Hub, topic string, evt kafka.ChatEvent) {
 			return
 		}
 		out, _ := json.Marshal(map[string]interface{}{
-			"type":    "dm",
+			"type":    evt.Type,
 			"payload": evt.Payload,
 		})
 		h.BroadcastUser(toID, hub.Event{Data: out})

@@ -121,6 +121,81 @@ func TestWSDMFanout(t *testing.T) {
 	}
 }
 
+func TestWSDMReadReceiptFlow(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackApp(env.Pool)
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	sender := registerAndLogin(t, ts.URL, "receipt-sender")
+	receiver := registerAndLogin(t, ts.URL, "receipt-receiver")
+
+	cSender := wsDial(t, ts.URL, sender.AccessToken)
+	defer cSender.Close()
+	cReceiver := wsDial(t, ts.URL, receiver.AccessToken)
+	defer cReceiver.Close()
+
+	const content = "receipt flow"
+	if err := cSender.WriteJSON(map[string]string{"type": "dm", "to": receiver.UserID.String(), "content": content}); err != nil {
+		t.Fatalf("sender send dm: %v", err)
+	}
+
+	var dmID string
+	gotReceiverDM := waitForWSEvent(cReceiver, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "dm" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		if payload["content"] != content {
+			return false
+		}
+		if id, ok := payload["id"].(string); ok {
+			dmID = id
+		}
+		return dmID != ""
+	})
+	if !gotReceiverDM {
+		t.Fatal("receiver did not get dm")
+	}
+
+	gotDeliveredReceipt := waitForWSEvent(cSender, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "dm_receipt" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["dm_id"] == dmID && payload["delivered_at"] != nil
+	})
+	if !gotDeliveredReceipt {
+		t.Fatal("sender did not get delivered receipt")
+	}
+
+	if err := cReceiver.WriteJSON(map[string]string{"type": "read_dm", "dm_id": dmID}); err != nil {
+		t.Fatalf("receiver send read_dm: %v", err)
+	}
+
+	gotReadReceipt := waitForWSEvent(cSender, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "dm_receipt" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["dm_id"] == dmID && payload["read_at"] != nil
+	})
+	if !gotReadReceipt {
+		t.Fatal("sender did not get read receipt")
+	}
+}
+
 type wsEnvelope struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
