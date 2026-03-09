@@ -81,6 +81,8 @@ func (f *fakePublisher) Publish(topic, key string, evt kafka.ChatEvent) error {
 }
 
 func TestMessageServiceSendRoomMessageRequiresMembership(t *testing.T) {
+	t.Parallel()
+
 	rr := &fakeMessageRoomRepo{isMember: false}
 	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakePublisher{})
 
@@ -91,6 +93,8 @@ func TestMessageServiceSendRoomMessageRequiresMembership(t *testing.T) {
 }
 
 func TestMessageServiceSendRoomMessagePublishes(t *testing.T) {
+	t.Parallel()
+
 	rr := &fakeMessageRoomRepo{isMember: true}
 	pub := &fakePublisher{}
 	rid := uuid.New()
@@ -110,6 +114,8 @@ func TestMessageServiceSendRoomMessagePublishes(t *testing.T) {
 }
 
 func TestMessageServiceSendDMPublishFailureDoesNotFailCall(t *testing.T) {
+	t.Parallel()
+
 	mr := &fakeMessageRepo{}
 	pub := &fakePublisher{err: errors.New("kafka down")}
 	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, pub)
@@ -124,6 +130,8 @@ func TestMessageServiceSendDMPublishFailureDoesNotFailCall(t *testing.T) {
 }
 
 func TestMessageServiceHistoryDelegation(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	rr := &fakeMessageRoomRepo{listResp: []*model.Message{{ID: uuid.New(), CreatedAt: now}}}
 	mr := &fakeMessageRepo{listResp: []*model.DirectMessage{{ID: uuid.New(), CreatedAt: now}}}

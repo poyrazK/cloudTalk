@@ -19,7 +19,10 @@ func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 		`INSERT INTO users (id, username, email, password_hash) VALUES ($1,$2,$3,$4)`,
 		u.ID, u.Username, u.Email, u.PasswordHash,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
@@ -51,7 +54,10 @@ func (r *UserRepo) SaveRefreshToken(ctx context.Context, t *model.RefreshToken) 
 		`INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES ($1,$2,$3,$4)`,
 		t.ID, t.UserID, t.TokenHash, t.ExpiresAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("save refresh token: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepo) GetRefreshToken(ctx context.Context, tokenHash string) (*model.RefreshToken, error) {
@@ -60,17 +66,23 @@ func (r *UserRepo) GetRefreshToken(ctx context.Context, tokenHash string) (*mode
 		`SELECT id, user_id, token_hash, expires_at FROM refresh_tokens WHERE token_hash=$1`, tokenHash,
 	).Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get refresh token: %w", err)
 	}
 	return t, nil
 }
 
 func (r *UserRepo) DeleteRefreshToken(ctx context.Context, tokenHash string) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM refresh_tokens WHERE token_hash=$1`, tokenHash)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete refresh token: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepo) DeleteExpiredRefreshTokens(ctx context.Context) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM refresh_tokens WHERE expires_at < $1`, time.Now())
-	return err
+	if err != nil {
+		return fmt.Errorf("delete expired refresh tokens: %w", err)
+	}
+	return nil
 }

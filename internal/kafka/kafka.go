@@ -49,7 +49,7 @@ func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
 	data, err := json.Marshal(evt)
 	if err != nil {
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
-		return err
+		return fmt.Errorf("marshal chat event: %w", err)
 	}
 	msg := &sarama.ProducerMessage{
 		Topic: topic,
@@ -59,7 +59,7 @@ func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
 	_, _, err = p.producer.SendMessage(msg)
 	if err != nil {
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
-		return err
+		return fmt.Errorf("send kafka message: %w", err)
 	}
 	metrics.KafkaPublishTotal.WithLabelValues(topic, "ok").Inc()
 	return nil
@@ -67,7 +67,10 @@ func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
 
 // Close gracefully shuts down the producer.
 func (p *Producer) Close() error {
-	return p.producer.Close()
+	if err := p.producer.Close(); err != nil {
+		return fmt.Errorf("close producer: %w", err)
+	}
+	return nil
 }
 
 // --- Consumer ---
@@ -125,7 +128,12 @@ func (c *Consumer) Start(ctx context.Context) {
 }
 
 // Close shuts down the consumer group.
-func (c *Consumer) Close() error { return c.group.Close() }
+func (c *Consumer) Close() error {
+	if err := c.group.Close(); err != nil {
+		return fmt.Errorf("close consumer group: %w", err)
+	}
+	return nil
+}
 
 // consumerGroupHandler implements sarama.ConsumerGroupHandler.
 type consumerGroupHandler struct {

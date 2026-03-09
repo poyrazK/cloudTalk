@@ -3,6 +3,8 @@ package handler
 import "testing"
 
 func TestValidateRegister(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		user    string
@@ -18,6 +20,8 @@ func TestValidateRegister(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateRegister(tc.user, tc.email, tc.pass)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("wantErr=%v got err=%v", tc.wantErr, err)
@@ -27,6 +31,8 @@ func TestValidateRegister(t *testing.T) {
 }
 
 func TestValidateRoom(t *testing.T) {
+	t.Parallel()
+
 	if err := validateRoom("general", "desc"); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -36,6 +42,8 @@ func TestValidateRoom(t *testing.T) {
 }
 
 func TestValidateContent(t *testing.T) {
+	t.Parallel()
+
 	if err := validateContent("hello"); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

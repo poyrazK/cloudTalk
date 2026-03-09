@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,10 @@ func (r *MessageRepo) SaveDM(ctx context.Context, m *model.DirectMessage) error 
 		`INSERT INTO direct_messages (id, sender_id, receiver_id, content) VALUES ($1,$2,$3,$4)`,
 		m.ID, m.SenderID, m.ReceiverID, m.Content,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("save dm: %w", err)
+	}
+	return nil
 }
 
 // ListDMs returns paginated DMs between two users, ordered newest-first.
@@ -32,7 +36,7 @@ func (r *MessageRepo) ListDMs(ctx context.Context, userA, userB uuid.UUID, befor
 		userA, userB, before, limit,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query dms: %w", err)
 	}
 	defer rows.Close()
 
@@ -40,9 +44,12 @@ func (r *MessageRepo) ListDMs(ctx context.Context, userA, userB uuid.UUID, befor
 	for rows.Next() {
 		m := &model.DirectMessage{}
 		if err := rows.Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.Content, &m.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan dm row: %w", err)
 		}
 		msgs = append(msgs, m)
 	}
-	return msgs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dm rows: %w", err)
+	}
+	return msgs, nil
 }

@@ -69,6 +69,8 @@ func (f *fakeRoomRepo) IsMember(_ context.Context, _, _ uuid.UUID) (bool, error)
 }
 
 func TestRoomServiceCreateAutoAddsCreator(t *testing.T) {
+	t.Parallel()
+
 	repo := &fakeRoomRepo{}
 	svc := NewRoomService(repo)
 	uid := uuid.New()
@@ -86,6 +88,8 @@ func TestRoomServiceCreateAutoAddsCreator(t *testing.T) {
 }
 
 func TestRoomServiceJoinRoomNotFound(t *testing.T) {
+	t.Parallel()
+
 	repo := &fakeRoomRepo{getErr: errors.New("missing")}
 	svc := NewRoomService(repo)
 	err := svc.Join(context.Background(), uuid.New(), uuid.New())
@@ -95,6 +99,8 @@ func TestRoomServiceJoinRoomNotFound(t *testing.T) {
 }
 
 func TestRoomServiceLeaveDelegates(t *testing.T) {
+	t.Parallel()
+
 	repo := &fakeRoomRepo{}
 	svc := NewRoomService(repo)
 	rid := uuid.New()

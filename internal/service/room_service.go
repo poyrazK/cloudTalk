@@ -41,24 +41,42 @@ func (s *RoomService) Create(ctx context.Context, name, description string, crea
 }
 
 func (s *RoomService) Get(ctx context.Context, id uuid.UUID) (*model.Room, error) {
-	return s.rooms.GetByID(ctx, id)
+	room, err := s.rooms.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get room: %w", err)
+	}
+	return room, nil
 }
 
 func (s *RoomService) ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.Room, error) {
-	return s.rooms.ListByUser(ctx, userID)
+	rooms, err := s.rooms.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user rooms: %w", err)
+	}
+	return rooms, nil
 }
 
 func (s *RoomService) Join(ctx context.Context, roomID, userID uuid.UUID) error {
 	if _, err := s.rooms.GetByID(ctx, roomID); err != nil {
 		return fmt.Errorf("room not found: %w", err)
 	}
-	return s.rooms.AddMember(ctx, roomID, userID)
+	if err := s.rooms.AddMember(ctx, roomID, userID); err != nil {
+		return fmt.Errorf("join room: %w", err)
+	}
+	return nil
 }
 
 func (s *RoomService) Leave(ctx context.Context, roomID, userID uuid.UUID) error {
-	return s.rooms.RemoveMember(ctx, roomID, userID)
+	if err := s.rooms.RemoveMember(ctx, roomID, userID); err != nil {
+		return fmt.Errorf("leave room: %w", err)
+	}
+	return nil
 }
 
 func (s *RoomService) IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error) {
-	return s.rooms.IsMember(ctx, roomID, userID)
+	ok, err := s.rooms.IsMember(ctx, roomID, userID)
+	if err != nil {
+		return false, fmt.Errorf("check room member: %w", err)
+	}
+	return ok, nil
 }

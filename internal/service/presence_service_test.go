@@ -21,6 +21,8 @@ func (f *fakePresenceHub) BroadcastUser(userID uuid.UUID, evt hub.Event) {
 }
 
 func TestPresenceServiceOnlineOfflineAndPublish(t *testing.T) {
+	t.Parallel()
+
 	pub := &fakePublisher{}
 	h := &fakePresenceHub{}
 	svc := NewPresenceService(pub, h)
@@ -41,6 +43,8 @@ func TestPresenceServiceOnlineOfflineAndPublish(t *testing.T) {
 }
 
 func TestPresenceServiceHandleKafkaPresence(t *testing.T) {
+	t.Parallel()
+
 	pub := &fakePublisher{}
 	h := &fakePresenceHub{}
 	svc := NewPresenceService(pub, h)
