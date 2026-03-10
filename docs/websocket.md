@@ -48,6 +48,12 @@ Mark a DM as read. Only the receiver of the DM can do this.
 { "type": "read_dm", "dm_id": "<dm_uuid>" }
 ```
 
+### read_room
+Mark a room as read for the current user.
+```json
+{ "type": "read_room", "room_id": "<room_uuid>" }
+```
+
 ### edit_message
 Edit a room message. Only the sender can edit.
 ```json
