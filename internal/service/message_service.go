@@ -26,12 +26,19 @@ var (
 	ErrMessagePersistence     = errors.New("message persistence failed")
 	ErrDMNotFound             = errors.New("dm not found")
 	ErrDMReceiptForbidden     = errors.New("dm receipt forbidden")
+	ErrMessageNotFound        = errors.New("message not found")
+	ErrMessageEditForbidden   = errors.New("message edit forbidden")
+	ErrMessageDeleteForbidden = errors.New("message delete forbidden")
+	ErrMessageDeleted         = errors.New("message is deleted")
 )
 
 type messageRoomRepository interface {
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 	SaveMessage(ctx context.Context, m *model.Message) error
 	ListMessages(ctx context.Context, roomID uuid.UUID, before time.Time, limit int) ([]*model.Message, error)
+	GetMessageByID(ctx context.Context, id uuid.UUID) (*model.Message, error)
+	UpdateMessageContent(ctx context.Context, id uuid.UUID, content string, editedAt time.Time) error
+	SoftDeleteMessage(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
 }
 
 type messageRepository interface {
@@ -41,6 +48,8 @@ type messageRepository interface {
 	GetDMByID(ctx context.Context, id uuid.UUID) (*model.DirectMessage, error)
 	MarkDMDelivered(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
 	MarkDMRead(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
+	UpdateDMContent(ctx context.Context, id uuid.UUID, content string, editedAt time.Time) error
+	SoftDeleteDM(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
 }
 
 type eventPublisher interface {
@@ -202,5 +211,123 @@ func (s *MessageService) publishDMReceipt(dm *model.DirectMessage) {
 		Payload:  payload,
 	}); err != nil {
 		slog.Error("publish dm receipt", "err", err)
+	}
+}
+
+func (s *MessageService) EditRoomMessage(ctx context.Context, messageID, actorID uuid.UUID, newContent string) (*model.Message, error) {
+	msg, err := s.roomRepo.GetMessageByID(ctx, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMessageNotFound, err)
+	}
+	if msg.SenderID != actorID {
+		return nil, ErrMessageEditForbidden
+	}
+	if msg.DeletedAt != nil {
+		return nil, ErrMessageDeleted
+	}
+	now := time.Now().UTC()
+	if err := s.roomRepo.UpdateMessageContent(ctx, messageID, newContent, now); err != nil {
+		return nil, fmt.Errorf("%w: edit room message: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.roomRepo.GetMessageByID(ctx, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload edited room message: %w", ErrMessagePersistence, err)
+	}
+	s.publishRoomEvent("message_updated", updated)
+	return updated, nil
+}
+
+func (s *MessageService) DeleteRoomMessage(ctx context.Context, messageID, actorID uuid.UUID) (*model.Message, error) {
+	msg, err := s.roomRepo.GetMessageByID(ctx, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMessageNotFound, err)
+	}
+	if msg.SenderID != actorID {
+		return nil, ErrMessageDeleteForbidden
+	}
+	now := time.Now().UTC()
+	if err := s.roomRepo.SoftDeleteMessage(ctx, messageID, now); err != nil {
+		return nil, fmt.Errorf("%w: delete room message: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.roomRepo.GetMessageByID(ctx, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload deleted room message: %w", ErrMessagePersistence, err)
+	}
+	s.publishRoomEvent("message_deleted", updated)
+	return updated, nil
+}
+
+func (s *MessageService) EditDM(ctx context.Context, dmID, actorID uuid.UUID, newContent string) (*model.DirectMessage, error) {
+	dm, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDMNotFound, err)
+	}
+	if dm.SenderID != actorID {
+		return nil, ErrMessageEditForbidden
+	}
+	if dm.DeletedAt != nil {
+		return nil, ErrMessageDeleted
+	}
+	now := time.Now().UTC()
+	if err := s.messageRepo.UpdateDMContent(ctx, dmID, newContent, now); err != nil {
+		return nil, fmt.Errorf("%w: edit dm: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload edited dm: %w", ErrMessagePersistence, err)
+	}
+	s.publishDMEvent("dm_updated", updated)
+	return updated, nil
+}
+
+func (s *MessageService) DeleteDM(ctx context.Context, dmID, actorID uuid.UUID) (*model.DirectMessage, error) {
+	dm, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDMNotFound, err)
+	}
+	if dm.SenderID != actorID {
+		return nil, ErrMessageDeleteForbidden
+	}
+	now := time.Now().UTC()
+	if err := s.messageRepo.SoftDeleteDM(ctx, dmID, now); err != nil {
+		return nil, fmt.Errorf("%w: delete dm: %w", ErrMessagePersistence, err)
+	}
+	updated, err := s.messageRepo.GetDMByID(ctx, dmID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reload deleted dm: %w", ErrMessagePersistence, err)
+	}
+	s.publishDMEvent("dm_deleted", updated)
+	return updated, nil
+}
+
+func (s *MessageService) publishRoomEvent(eventType string, msg *model.Message) {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		slog.Error("marshal room event", "type", eventType, "err", err)
+		return
+	}
+	if err := s.producer.Publish(kafka.TopicRoomMessages, msg.RoomID.String(), kafka.ChatEvent{
+		Type:     eventType,
+		RoomID:   msg.RoomID.String(),
+		SenderID: msg.SenderID.String(),
+		Payload:  payload,
+	}); err != nil {
+		slog.Error("publish room event", "type", eventType, "err", err)
+	}
+}
+
+func (s *MessageService) publishDMEvent(eventType string, dm *model.DirectMessage) {
+	payload, err := json.Marshal(dm)
+	if err != nil {
+		slog.Error("marshal dm event", "type", eventType, "err", err)
+		return
+	}
+	if err := s.producer.Publish(kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
+		Type:     eventType,
+		SenderID: dm.SenderID.String(),
+		ToUserID: dm.ReceiverID.String(),
+		Payload:  payload,
+	}); err != nil {
+		slog.Error("publish dm event", "type", eventType, "err", err)
 	}
 }

@@ -18,12 +18,13 @@ import (
 
 // incomingMsg is the JSON envelope sent by the client over WebSocket.
 type incomingMsg struct {
-	Type    string `json:"type"`
-	RoomID  string `json:"room_id,omitempty"`
-	DMID    string `json:"dm_id,omitempty"`
-	To      string `json:"to,omitempty"` // DM target user ID
-	Content string `json:"content,omitempty"`
-	Typing  bool   `json:"typing,omitempty"`
+	Type      string `json:"type"`
+	RoomID    string `json:"room_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
+	DMID      string `json:"dm_id,omitempty"`
+	To        string `json:"to,omitempty"` // DM target user ID
+	Content   string `json:"content,omitempty"`
+	Typing    bool   `json:"typing,omitempty"`
 }
 
 type outgoingMsg struct {
@@ -192,6 +193,18 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 	case "read_dm":
 		h.handleReadDM(ctx, client, msg)
 
+	case "edit_message":
+		h.handleEditRoomMessage(ctx, client, msg)
+
+	case "delete_message":
+		h.handleDeleteRoomMessage(ctx, client, msg)
+
+	case "edit_dm":
+		h.handleEditDM(ctx, client, msg)
+
+	case "delete_dm":
+		h.handleDeleteDM(ctx, client, msg)
+
 	case "typing":
 		h.handleTyping(client, msg)
 	}
@@ -286,6 +299,80 @@ func (h *WSHandler) handleReadDM(ctx context.Context, client *hub.Client, msg in
 			slog.Warn("ws: dm not found", "user_id", client.UserID, "dm_id", dmID)
 		default:
 			slog.Error("ws: mark dm read", "err", err)
+		}
+	}
+}
+
+func (h *WSHandler) handleEditRoomMessage(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	messageID, err := uuid.Parse(msg.MessageID)
+	if err != nil {
+		return
+	}
+	if err := validateContent(msg.Content); err != nil {
+		return
+	}
+	if _, err := h.messages.EditRoomMessage(ctx, messageID, client.UserID, msg.Content); err != nil {
+		switch {
+		case errors.Is(err, service.ErrMessageEditForbidden):
+			slog.Warn("ws: room edit forbidden", "user_id", client.UserID, "message_id", messageID)
+		case errors.Is(err, service.ErrMessageNotFound), errors.Is(err, service.ErrMessageDeleted):
+			slog.Warn("ws: room edit rejected", "user_id", client.UserID, "message_id", messageID, "err", err)
+		default:
+			slog.Error("ws: edit room message", "err", err)
+		}
+	}
+}
+
+func (h *WSHandler) handleDeleteRoomMessage(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	messageID, err := uuid.Parse(msg.MessageID)
+	if err != nil {
+		return
+	}
+	if _, err := h.messages.DeleteRoomMessage(ctx, messageID, client.UserID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrMessageDeleteForbidden):
+			slog.Warn("ws: room delete forbidden", "user_id", client.UserID, "message_id", messageID)
+		case errors.Is(err, service.ErrMessageNotFound):
+			slog.Warn("ws: room delete missing", "user_id", client.UserID, "message_id", messageID)
+		default:
+			slog.Error("ws: delete room message", "err", err)
+		}
+	}
+}
+
+func (h *WSHandler) handleEditDM(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	dmID, err := uuid.Parse(msg.DMID)
+	if err != nil {
+		return
+	}
+	if err := validateContent(msg.Content); err != nil {
+		return
+	}
+	if _, err := h.messages.EditDM(ctx, dmID, client.UserID, msg.Content); err != nil {
+		switch {
+		case errors.Is(err, service.ErrMessageEditForbidden):
+			slog.Warn("ws: dm edit forbidden", "user_id", client.UserID, "dm_id", dmID)
+		case errors.Is(err, service.ErrDMNotFound), errors.Is(err, service.ErrMessageDeleted):
+			slog.Warn("ws: dm edit rejected", "user_id", client.UserID, "dm_id", dmID, "err", err)
+		default:
+			slog.Error("ws: edit dm", "err", err)
+		}
+	}
+}
+
+func (h *WSHandler) handleDeleteDM(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	dmID, err := uuid.Parse(msg.DMID)
+	if err != nil {
+		return
+	}
+	if _, err := h.messages.DeleteDM(ctx, dmID, client.UserID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrMessageDeleteForbidden):
+			slog.Warn("ws: dm delete forbidden", "user_id", client.UserID, "dm_id", dmID)
+		case errors.Is(err, service.ErrDMNotFound):
+			slog.Warn("ws: dm delete missing", "user_id", client.UserID, "dm_id", dmID)
+		default:
+			slog.Error("ws: delete dm", "err", err)
 		}
 	}
 }

@@ -42,3 +42,5 @@ All database access via pgx/v5. Cursor-based pagination for message history (use
 
 ### Service Layer (`internal/service/`)
 Orchestrates business logic: room membership checks before sending, saving to DB and publishing to Kafka atomically from the caller's perspective.
+
+For message-level behavior details (receipts, unread counts, edit/delete), see `docs/messaging.md`.

@@ -29,21 +29,25 @@ type RoomMember struct {
 }
 
 type Message struct {
-	ID        uuid.UUID `db:"id"         json:"id"`
-	RoomID    uuid.UUID `db:"room_id"    json:"room_id"`
-	SenderID  uuid.UUID `db:"sender_id"  json:"sender_id"`
-	Content   string    `db:"content"    json:"content"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	ID        uuid.UUID  `db:"id"         json:"id"`
+	RoomID    uuid.UUID  `db:"room_id"    json:"room_id"`
+	SenderID  uuid.UUID  `db:"sender_id"  json:"sender_id"`
+	Content   string     `db:"content"    json:"content"`
+	CreatedAt time.Time  `db:"created_at" json:"created_at"`
+	EditedAt  *time.Time `db:"edited_at"  json:"edited_at,omitempty"`
+	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at,omitempty"`
 }
 
 type DirectMessage struct {
-	ID          uuid.UUID  `db:"id"          json:"id"`
-	SenderID    uuid.UUID  `db:"sender_id"   json:"sender_id"`
-	ReceiverID  uuid.UUID  `db:"receiver_id" json:"receiver_id"`
-	Content     string     `db:"content"     json:"content"`
-	CreatedAt   time.Time  `db:"created_at"  json:"created_at"`
+	ID          uuid.UUID  `db:"id"           json:"id"`
+	SenderID    uuid.UUID  `db:"sender_id"    json:"sender_id"`
+	ReceiverID  uuid.UUID  `db:"receiver_id"  json:"receiver_id"`
+	Content     string     `db:"content"      json:"content"`
+	CreatedAt   time.Time  `db:"created_at"   json:"created_at"`
 	DeliveredAt *time.Time `db:"delivered_at" json:"delivered_at,omitempty"`
 	ReadAt      *time.Time `db:"read_at"      json:"read_at,omitempty"`
+	EditedAt    *time.Time `db:"edited_at"    json:"edited_at,omitempty"`
+	DeletedAt   *time.Time `db:"deleted_at"   json:"deleted_at,omitempty"`
 }
 
 type DMUnreadCount struct {

@@ -48,6 +48,30 @@ Mark a DM as read. Only the receiver of the DM can do this.
 { "type": "read_dm", "dm_id": "<dm_uuid>" }
 ```
 
+### edit_message
+Edit a room message. Only the sender can edit.
+```json
+{ "type": "edit_message", "message_id": "<uuid>", "content": "Updated text" }
+```
+
+### delete_message
+Soft delete a room message. Only the sender can delete.
+```json
+{ "type": "delete_message", "message_id": "<uuid>" }
+```
+
+### edit_dm
+Edit a direct message. Only the sender can edit.
+```json
+{ "type": "edit_dm", "dm_id": "<uuid>", "content": "Updated text" }
+```
+
+### delete_dm
+Soft delete a direct message. Only the sender can delete.
+```json
+{ "type": "delete_dm", "dm_id": "<uuid>" }
+```
+
 Self DMs are rejected.
 
 ### typing
@@ -103,6 +127,12 @@ Delivery/read receipt for a direct message.
 
 `delivered_at` is set when the recipient WebSocket connection receives the DM event.
 `read_at` is set when the recipient sends `read_dm`.
+
+### message_updated / message_deleted
+Room message update and soft-delete events.
+
+### dm_updated / dm_deleted
+Direct message update and soft-delete events.
 
 ### typing
 A user started or stopped typing in a room.

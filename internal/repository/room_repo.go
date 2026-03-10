@@ -96,7 +96,7 @@ func (r *RoomRepo) IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool
 
 func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before time.Time, limit int) ([]*model.Message, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, room_id, sender_id, content, created_at FROM messages
+		`SELECT id, room_id, sender_id, content, created_at, edited_at, deleted_at FROM messages
 		 WHERE room_id=$1 AND created_at < $2
 		 ORDER BY created_at DESC LIMIT $3`,
 		roomID, before, limit,
@@ -109,7 +109,7 @@ func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before ti
 	var msgs []*model.Message
 	for rows.Next() {
 		m := &model.Message{}
-		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderID, &m.Content, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.RoomID, &m.SenderID, &m.Content, &m.CreatedAt, &m.EditedAt, &m.DeletedAt); err != nil {
 			return nil, fmt.Errorf("scan room message row: %w", err)
 		}
 		msgs = append(msgs, m)
@@ -118,6 +118,45 @@ func (r *RoomRepo) ListMessages(ctx context.Context, roomID uuid.UUID, before ti
 		return nil, fmt.Errorf("iterate room message rows: %w", err)
 	}
 	return msgs, nil
+}
+
+func (r *RoomRepo) GetMessageByID(ctx context.Context, id uuid.UUID) (*model.Message, error) {
+	m := &model.Message{}
+	err := r.db.QueryRow(ctx,
+		`SELECT id, room_id, sender_id, content, created_at, edited_at, deleted_at
+		 FROM messages WHERE id=$1`,
+		id,
+	).Scan(&m.ID, &m.RoomID, &m.SenderID, &m.Content, &m.CreatedAt, &m.EditedAt, &m.DeletedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get room message by id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *RoomRepo) UpdateMessageContent(ctx context.Context, id uuid.UUID, content string, editedAt time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE messages
+		 SET content=$2, edited_at=$3
+		 WHERE id=$1`,
+		id, content, editedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("update room message content: %w", err)
+	}
+	return nil
+}
+
+func (r *RoomRepo) SoftDeleteMessage(ctx context.Context, id uuid.UUID, deletedAt time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE messages
+		 SET deleted_at = COALESCE(deleted_at, $2)
+		 WHERE id=$1`,
+		id, deletedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("soft delete room message: %w", err)
+	}
+	return nil
 }
 
 func (r *RoomRepo) SaveMessage(ctx context.Context, m *model.Message) error {
