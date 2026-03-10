@@ -153,6 +153,49 @@ Join backlog rule:
 
 ---
 
+### GET /rooms/conversations
+Returns room conversation rows for the authenticated user, ordered by latest room activity.
+
+Each row includes:
+
+- room metadata (`room_id`, `name`, `description`)
+- `unread_count`
+- `last_message` (or `null` for rooms with no messages)
+
+**Query params**
+
+| Param | Type      | Default | Description               |
+|-------|-----------|---------|---------------------------|
+| limit | int(1-100) | 50      | Max number of room rows   |
+
+**Response** `200`
+```json
+[
+  {
+    "room_id": "<uuid>",
+    "name": "general",
+    "description": "General discussion",
+    "unread_count": 3,
+    "last_message": {
+      "id": "<uuid>",
+      "room_id": "<uuid>",
+      "sender_id": "<uuid>",
+      "content": "latest text",
+      "created_at": "...",
+      "edited_at": "...",
+      "deleted_at": null
+    }
+  }
+]
+```
+
+Ordering rules:
+
+- Rooms are sorted by latest message timestamp descending.
+- Rooms with no messages are listed after active rooms.
+
+---
+
 ## Direct Messages
 
 ### GET /dms/:userId/messages

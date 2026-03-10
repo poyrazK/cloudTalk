@@ -9,6 +9,7 @@ This document defines how core chat message behavior works in cloudTalk.
 - Delivery/read receipts for DMs
 - Unread counts for DMs
 - Unread counts for rooms
+- Conversation lists for DMs and rooms
 - Message edit and soft delete
 
 ## Message lifecycle
@@ -64,6 +65,32 @@ APIs:
 
 - `GET /api/v1/rooms/unread-counts`
 - WebSocket action `read_room` to advance the boundary
+
+## Conversation list (room)
+
+Room conversations are exposed as one row per room membership, ordered by latest room message timestamp.
+
+Each conversation item contains:
+
+- `room_id`
+- `name`
+- `description`
+- `unread_count`
+- `last_message`
+
+API:
+
+- `GET /api/v1/rooms/conversations`
+
+Query params:
+
+- `limit` (1-100, default 50)
+
+Conversation semantics:
+
+- `last_message` is the latest room message, including soft-deleted messages with `deleted_at` set.
+- rooms with no messages are included with `last_message = null`.
+- `unread_count` follows room unread rules from the previous section.
 
 ## Conversation list (DM)
 
