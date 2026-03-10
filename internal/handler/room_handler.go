@@ -133,3 +133,13 @@ func (h *RoomHandler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResp(w, http.StatusOK, msgs)
 }
+
+func (h *RoomHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
+	userID, _ := authsvc.UserIDFromContext(r.Context())
+	counts, err := h.rooms.UnreadCounts(r.Context(), userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, counts)
+}

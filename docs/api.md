@@ -128,6 +128,31 @@ Only room members can access this endpoint. Non-members receive `403`.
 
 ---
 
+### GET /rooms/unread-counts
+Returns unread room message counts for the authenticated user, grouped by room.
+
+**Response** `200`
+```json
+[
+  { "room_id": "<uuid>", "count": 5 },
+  { "room_id": "<uuid>", "count": 0 }
+]
+```
+
+Count rules:
+
+- Only rooms where the user is a member are included.
+- Only messages from other users are counted (`sender_id != current_user`).
+- The unread boundary is the latest of:
+  - room read state (`last_read_at`) if present
+  - otherwise the room membership join time (`joined_at`)
+
+Join backlog rule:
+
+- Messages sent before the user joined a room are not counted unread.
+
+---
+
 ## Direct Messages
 
 ### GET /dms/:userId/messages

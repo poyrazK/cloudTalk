@@ -8,6 +8,7 @@ This document defines how core chat message behavior works in cloudTalk.
 - Direct messages (DMs)
 - Delivery/read receipts for DMs
 - Unread counts for DMs
+- Unread counts for rooms
 - Message edit and soft delete
 
 ## Message lifecycle
@@ -41,6 +42,28 @@ Count rule:
 API:
 
 - `GET /api/v1/dms/unread-counts`
+
+## Unread counts (room)
+
+Unread room counts are grouped by room ID.
+
+Count rules:
+
+- user must be a room member
+- message sender is not the current user
+- message `created_at` is greater than read boundary
+
+Read boundary rule:
+
+- use `room_read_state.last_read_at` if present
+- otherwise use membership `joined_at`
+
+This ensures room backlog from before a join does not count unread.
+
+APIs:
+
+- `GET /api/v1/rooms/unread-counts`
+- WebSocket action `read_room` to advance the boundary
 
 ## Conversation list (DM)
 
@@ -94,6 +117,7 @@ Client actions:
 - `message`
 - `dm`
 - `read_dm`
+- `read_room`
 - `edit_message`
 - `delete_message`
 - `edit_dm`
@@ -138,4 +162,3 @@ Direct messages:
 - Edit history/audit trail
 - Multi-device per-user delivery semantics
 - Hard-delete and retention policies
-- Room unread counts

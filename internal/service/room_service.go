@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/model"
@@ -17,6 +19,9 @@ type roomRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.Room, error)
 	AddMember(ctx context.Context, roomID, userID uuid.UUID) error
+	InitRoomReadState(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
+	MarkRoomRead(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
+	ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error)
 	RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 }
@@ -37,6 +42,7 @@ func (s *RoomService) Create(ctx context.Context, name, description string, crea
 	}
 	// Creator automatically joins
 	_ = s.rooms.AddMember(ctx, room.ID, createdBy)
+	_ = s.rooms.InitRoomReadState(ctx, room.ID, createdBy, time.Now().UTC())
 	return room, nil
 }
 
@@ -63,6 +69,9 @@ func (s *RoomService) Join(ctx context.Context, roomID, userID uuid.UUID) error 
 	if err := s.rooms.AddMember(ctx, roomID, userID); err != nil {
 		return fmt.Errorf("join room: %w", err)
 	}
+	if err := s.rooms.InitRoomReadState(ctx, roomID, userID, time.Now().UTC()); err != nil {
+		return fmt.Errorf("init room read state: %w", err)
+	}
 	return nil
 }
 
@@ -79,4 +88,26 @@ func (s *RoomService) IsMember(ctx context.Context, roomID, userID uuid.UUID) (b
 		return false, fmt.Errorf("check room member: %w", err)
 	}
 	return ok, nil
+}
+
+func (s *RoomService) MarkRead(ctx context.Context, roomID, userID uuid.UUID) error {
+	ok, err := s.rooms.IsMember(ctx, roomID, userID)
+	if err != nil {
+		return fmt.Errorf("check room member: %w", err)
+	}
+	if !ok {
+		return errors.New("forbidden: not a room member")
+	}
+	if err := s.rooms.MarkRoomRead(ctx, roomID, userID, time.Now().UTC()); err != nil {
+		return fmt.Errorf("mark room read: %w", err)
+	}
+	return nil
+}
+
+func (s *RoomService) UnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error) {
+	counts, err := s.rooms.ListRoomUnreadCounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list room unread counts: %w", err)
+	}
+	return counts, nil
 }

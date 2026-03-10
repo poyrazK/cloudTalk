@@ -28,6 +28,11 @@ type RoomMember struct {
 	JoinedAt time.Time `db:"joined_at" json:"joined_at"`
 }
 
+type RoomUnreadCount struct {
+	RoomID uuid.UUID `db:"room_id" json:"room_id"`
+	Count  int       `db:"count"   json:"count"`
+}
+
 type Message struct {
 	ID        uuid.UUID  `db:"id"         json:"id"`
 	RoomID    uuid.UUID  `db:"room_id"    json:"room_id"`
