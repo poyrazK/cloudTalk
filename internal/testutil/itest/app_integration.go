@@ -52,6 +52,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 			r.Use(authsvc.Middleware(auth))
 			r.Post("/rooms", roomH.Create)
 			r.Get("/rooms", roomH.List)
+			r.Get("/rooms/conversations", roomH.Conversations)
 			r.Get("/rooms/unread-counts", roomH.UnreadCounts)
 			r.Get("/rooms/{id}", roomH.Get)
 			r.Post("/rooms/{id}/join", roomH.Join)

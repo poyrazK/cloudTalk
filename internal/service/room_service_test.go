@@ -11,23 +11,24 @@ import (
 )
 
 type fakeRoomRepo struct {
-	createErr      error
-	getErr         error
-	addMemberErr   error
-	initReadErr    error
-	markReadErr    error
-	removeErr      error
-	isMember       bool
-	isMemberErr    error
-	createdRoom    *model.Room
-	addedRoomID    uuid.UUID
-	addedUserID    uuid.UUID
-	initReadRoomID uuid.UUID
-	initReadUserID uuid.UUID
-	unreadResp     []*model.RoomUnreadCount
-	removedRoomID  uuid.UUID
-	removedUserID  uuid.UUID
-	listByUserResp []*model.Room
+	createErr        error
+	getErr           error
+	addMemberErr     error
+	initReadErr      error
+	markReadErr      error
+	removeErr        error
+	isMember         bool
+	isMemberErr      error
+	createdRoom      *model.Room
+	addedRoomID      uuid.UUID
+	addedUserID      uuid.UUID
+	initReadRoomID   uuid.UUID
+	initReadUserID   uuid.UUID
+	unreadResp       []*model.RoomUnreadCount
+	conversationResp []*model.RoomConversationHead
+	removedRoomID    uuid.UUID
+	removedUserID    uuid.UUID
+	listByUserResp   []*model.Room
 }
 
 func (f *fakeRoomRepo) Create(_ context.Context, room *model.Room) error {
@@ -76,6 +77,10 @@ func (f *fakeRoomRepo) MarkRoomRead(_ context.Context, _, _ uuid.UUID, _ time.Ti
 
 func (f *fakeRoomRepo) ListRoomUnreadCounts(_ context.Context, _ uuid.UUID) ([]*model.RoomUnreadCount, error) {
 	return f.unreadResp, nil
+}
+
+func (f *fakeRoomRepo) ListRoomConversationHeads(_ context.Context, _ uuid.UUID, _ int) ([]*model.RoomConversationHead, error) {
+	return f.conversationResp, nil
 }
 
 func (f *fakeRoomRepo) RemoveMember(_ context.Context, roomID, userID uuid.UUID) error {
@@ -167,5 +172,35 @@ func TestRoomServiceLeaveDelegates(t *testing.T) {
 	}
 	if repo.removedRoomID != rid || repo.removedUserID != uid {
 		t.Fatal("expected leave delegation")
+	}
+}
+
+func TestRoomServiceConversationsComposeUnreadAndLastMessage(t *testing.T) {
+	t.Parallel()
+
+	roomAID := uuid.New()
+	roomBID := uuid.New()
+	repo := &fakeRoomRepo{
+		conversationResp: []*model.RoomConversationHead{
+			{RoomID: roomAID, Name: "a", Description: "A room", LastMessage: &model.Message{ID: uuid.New(), RoomID: roomAID, Content: "latest-a"}},
+			{RoomID: roomBID, Name: "b", Description: "B room", LastMessage: nil},
+		},
+		unreadResp: []*model.RoomUnreadCount{{RoomID: roomAID, Count: 4}},
+	}
+	svc := NewRoomService(repo)
+
+	conversations, err := svc.Conversations(context.Background(), uuid.New(), 50)
+	if err != nil {
+		t.Fatalf("room conversations failed: %v", err)
+	}
+	if len(conversations) != 2 {
+		t.Fatalf("expected 2 room conversations, got %d", len(conversations))
+	}
+
+	if conversations[0].RoomID != roomAID || conversations[0].UnreadCount != 4 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "latest-a" {
+		t.Fatalf("unexpected first conversation: %+v", conversations[0])
+	}
+	if conversations[1].RoomID != roomBID || conversations[1].UnreadCount != 0 || conversations[1].LastMessage != nil {
+		t.Fatalf("unexpected second conversation: %+v", conversations[1])
 	}
 }

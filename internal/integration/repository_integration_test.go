@@ -307,6 +307,67 @@ func TestRepositoryRoomUnreadCountsIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryRoomConversationHeadsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	roomRepo := repository.NewRoomRepo(env.Pool)
+
+	owner := &model.User{ID: uuid.New(), Username: "owner-rc", Email: fmt.Sprintf("owner-rc-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	other := &model.User{ID: uuid.New(), Username: "other-rc", Email: fmt.Sprintf("other-rc-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	for _, u := range []*model.User{owner, other} {
+		if err := userRepo.Create(ctx, u); err != nil {
+			t.Fatalf("create user %s: %v", u.Username, err)
+		}
+	}
+
+	roomA := &model.Room{ID: uuid.New(), Name: "room-a", Description: "A", CreatedBy: owner.ID}
+	roomB := &model.Room{ID: uuid.New(), Name: "room-b", Description: "B", CreatedBy: owner.ID}
+	roomC := &model.Room{ID: uuid.New(), Name: "room-c", Description: "C", CreatedBy: owner.ID}
+	for _, room := range []*model.Room{roomA, roomB, roomC} {
+		if err := roomRepo.Create(ctx, room); err != nil {
+			t.Fatalf("create room %s: %v", room.Name, err)
+		}
+		if err := roomRepo.AddMember(ctx, room.ID, owner.ID); err != nil {
+			t.Fatalf("add owner member room %s: %v", room.Name, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	insertMessageAt(t, env, roomA.ID, other.ID, "a-old", now.Add(-5*time.Minute))
+	insertMessageAt(t, env, roomA.ID, other.ID, "a-latest", now.Add(-1*time.Minute))
+	roomBMsgID := uuid.New()
+	_, err := env.Pool.Exec(ctx,
+		`INSERT INTO messages (id, room_id, sender_id, content, created_at, deleted_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		roomBMsgID, roomB.ID, other.ID, "b-latest-deleted", now.Add(-2*time.Minute), now,
+	)
+	if err != nil {
+		t.Fatalf("insert room-b deleted latest message: %v", err)
+	}
+
+	heads, err := roomRepo.ListRoomConversationHeads(ctx, owner.ID, 50)
+	if err != nil {
+		t.Fatalf("list room conversation heads: %v", err)
+	}
+	if len(heads) != 3 {
+		t.Fatalf("expected 3 room heads, got %d", len(heads))
+	}
+
+	if heads[0].RoomID != roomA.ID || heads[0].LastMessage == nil || heads[0].LastMessage.Content != "a-latest" {
+		t.Fatalf("unexpected first room head: %+v", heads[0])
+	}
+	if heads[1].RoomID != roomB.ID || heads[1].LastMessage == nil || heads[1].LastMessage.Content != "b-latest-deleted" || heads[1].LastMessage.DeletedAt == nil {
+		t.Fatalf("unexpected second room head: %+v", heads[1])
+	}
+	if heads[2].RoomID != roomC.ID || heads[2].LastMessage != nil {
+		t.Fatalf("unexpected third room head: %+v", heads[2])
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),

@@ -22,6 +22,7 @@ type roomRepository interface {
 	InitRoomReadState(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
 	MarkRoomRead(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
 	ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error)
+	ListRoomConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversationHead, error)
 	RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 }
@@ -110,4 +111,33 @@ func (s *RoomService) UnreadCounts(ctx context.Context, userID uuid.UUID) ([]*mo
 		return nil, fmt.Errorf("list room unread counts: %w", err)
 	}
 	return counts, nil
+}
+
+func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversation, error) {
+	heads, err := s.rooms.ListRoomConversationHeads(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list room conversation heads: %w", err)
+	}
+
+	counts, err := s.rooms.ListRoomUnreadCounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list room unread counts for conversations: %w", err)
+	}
+	countByRoomID := make(map[uuid.UUID]int, len(counts))
+	for _, c := range counts {
+		countByRoomID[c.RoomID] = c.Count
+	}
+
+	conversations := make([]*model.RoomConversation, 0, len(heads))
+	for _, head := range heads {
+		conversations = append(conversations, &model.RoomConversation{
+			RoomID:      head.RoomID,
+			Name:        head.Name,
+			Description: head.Description,
+			UnreadCount: countByRoomID[head.RoomID],
+			LastMessage: head.LastMessage,
+		})
+	}
+
+	return conversations, nil
 }
