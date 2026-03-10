@@ -257,14 +257,17 @@ func TestDMConversationsIntegration(t *testing.T) {
 	if len(convs) != 2 {
 		t.Fatalf("expected 2 conversations, got %d", len(convs))
 	}
-	if convs[0].UserID != p1.UserID || convs[0].LastMessage == nil || convs[0].LastMessage.Content != "latest-p1" {
-		t.Fatalf("unexpected first conversation: %+v", convs[0])
+	got := map[uuid.UUID]model.DMConversation{}
+	for _, c := range convs {
+		got[c.UserID] = c
 	}
-	if convs[0].Username != "conv-p1" {
-		t.Fatalf("expected username conv-p1, got %q", convs[0].Username)
+	convP1, ok := got[p1.UserID]
+	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" {
+		t.Fatalf("unexpected p1 conversation: %+v", convP1)
 	}
-	if convs[1].UserID != p2.UserID || convs[1].LastMessage == nil || convs[1].LastMessage.Content != "latest-p2" {
-		t.Fatalf("unexpected second conversation: %+v", convs[1])
+	convP2, ok := got[p2.UserID]
+	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" {
+		t.Fatalf("unexpected p2 conversation: %+v", convP2)
 	}
 }
 
