@@ -210,6 +210,45 @@ func TestRepositoryDMUnreadCountsIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryDMConversationHeadsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	dmRepo := repository.NewMessageRepo(env.Pool)
+
+	owner := &model.User{ID: uuid.New(), Username: "owner-head", Email: fmt.Sprintf("owner-head-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	p1 := &model.User{ID: uuid.New(), Username: "p1", Email: fmt.Sprintf("p1-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	p2 := &model.User{ID: uuid.New(), Username: "p2", Email: fmt.Sprintf("p2-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	for _, u := range []*model.User{owner, p1, p2} {
+		if err := userRepo.Create(ctx, u); err != nil {
+			t.Fatalf("create user %s: %v", u.Username, err)
+		}
+	}
+
+	now := time.Now().UTC()
+	insertDMAt(t, env, p1.ID, owner.ID, "p1-old", now.Add(-5*time.Minute))
+	insertDMAt(t, env, owner.ID, p1.ID, "p1-latest", now.Add(-1*time.Minute))
+	insertDMAt(t, env, p2.ID, owner.ID, "p2-latest", now.Add(-2*time.Minute))
+
+	heads, err := dmRepo.ListDMConversationHeads(ctx, owner.ID, 50)
+	if err != nil {
+		t.Fatalf("list conversation heads: %v", err)
+	}
+	if len(heads) != 2 {
+		t.Fatalf("expected 2 conversation heads, got %d", len(heads))
+	}
+	if heads[0].UserID != p1.ID || heads[0].LastMessage.Content != "p1-latest" {
+		t.Fatalf("unexpected first head: %+v", heads[0])
+	}
+	if heads[1].UserID != p2.ID || heads[1].LastMessage.Content != "p2-latest" {
+		t.Fatalf("unexpected second head: %+v", heads[1])
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),
