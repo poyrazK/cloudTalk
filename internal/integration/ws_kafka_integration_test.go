@@ -196,6 +196,88 @@ func TestWSDMReadReceiptFlow(t *testing.T) {
 	}
 }
 
+func TestWSDMTypingRecipientOnly(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackApp(env.Pool)
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	sender := registerAndLogin(t, ts.URL, "typing-dm-sender")
+	receiver := registerAndLogin(t, ts.URL, "typing-dm-receiver")
+	third := registerAndLogin(t, ts.URL, "typing-dm-third")
+
+	cSender := wsDial(t, ts.URL, sender.AccessToken)
+	defer cSender.Close()
+	cReceiver := wsDial(t, ts.URL, receiver.AccessToken)
+	defer cReceiver.Close()
+	cThird := wsDial(t, ts.URL, third.AccessToken)
+	defer cThird.Close()
+
+	if err := cSender.WriteJSON(map[string]any{"type": "typing_dm", "to": receiver.UserID.String(), "typing": true}); err != nil {
+		t.Fatalf("sender typing_dm true: %v", err)
+	}
+
+	gotTypingStart := waitForWSEvent(cReceiver, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "typing_dm" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["user_id"] == sender.UserID.String() && payload["to_user_id"] == receiver.UserID.String() && payload["typing"] == true
+	})
+	if !gotTypingStart {
+		t.Fatal("receiver did not get typing_dm start event")
+	}
+
+	if got := waitForWSEvent(cSender, 400*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing_dm" }); got {
+		t.Fatal("sender unexpectedly received typing_dm event")
+	}
+	if got := waitForWSEvent(cThird, 400*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing_dm" }); got {
+		t.Fatal("third user unexpectedly received typing_dm event")
+	}
+
+	if err := cSender.WriteJSON(map[string]any{"type": "typing_dm", "to": receiver.UserID.String(), "typing": false}); err != nil {
+		t.Fatalf("sender typing_dm false: %v", err)
+	}
+	gotTypingStop := waitForWSEvent(cReceiver, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "typing_dm" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["user_id"] == sender.UserID.String() && payload["to_user_id"] == receiver.UserID.String() && payload["typing"] == false
+	})
+	if !gotTypingStop {
+		t.Fatal("receiver did not get typing_dm stop event")
+	}
+}
+
+func TestWSDMTypingSelfIgnored(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackApp(env.Pool)
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	user := registerAndLogin(t, ts.URL, "typing-dm-self")
+	conn := wsDial(t, ts.URL, user.AccessToken)
+	defer conn.Close()
+
+	if err := conn.WriteJSON(map[string]any{"type": "typing_dm", "to": user.UserID.String(), "typing": true}); err != nil {
+		t.Fatalf("self typing_dm write: %v", err)
+	}
+	if got := waitForWSEvent(conn, 500*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing_dm" }); got {
+		t.Fatal("self typing_dm should not produce events")
+	}
+}
+
 type wsEnvelope struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
