@@ -367,14 +367,14 @@ func TestRoomConversationsIntegration(t *testing.T) {
 	now := time.Now().UTC()
 	_, err := env.Pool.Exec(ctx,
 		`INSERT INTO messages (id, room_id, sender_id, content, created_at) VALUES ($1,$2,$3,$4,$5)`,
-		uuid.New(), roomA.ID, owner.UserID, "a-latest", now.Add(-1*time.Minute),
+		uuid.New(), roomA.ID, owner.UserID, "a-latest", now.Add(2*time.Minute),
 	)
 	if err != nil {
 		t.Fatalf("insert roomA message: %v", err)
 	}
 	_, err = env.Pool.Exec(ctx,
 		`INSERT INTO messages (id, room_id, sender_id, content, created_at, deleted_at) VALUES ($1,$2,$3,$4,$5,$6)`,
-		uuid.New(), roomB.ID, owner.UserID, "b-latest-deleted", now.Add(-2*time.Minute), now,
+		uuid.New(), roomB.ID, owner.UserID, "b-latest-deleted", now.Add(1*time.Minute), now,
 	)
 	if err != nil {
 		t.Fatalf("insert roomB message: %v", err)
