@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -132,6 +133,63 @@ func (r *RoomRepo) ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) (
 		return nil, fmt.Errorf("iterate room unread count rows: %w", err)
 	}
 	return counts, nil
+}
+
+func (r *RoomRepo) ListRoomConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversationHead, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT rm.room_id,
+		        r.name,
+		        r.description,
+		        lm.last_message
+		 FROM room_members rm
+		 JOIN rooms r ON r.id = rm.room_id
+		 LEFT JOIN LATERAL (
+		   SELECT json_build_object(
+		            'id', m.id,
+		            'room_id', m.room_id,
+		            'sender_id', m.sender_id,
+		            'content', m.content,
+		            'created_at', m.created_at,
+		            'edited_at', m.edited_at,
+		            'deleted_at', m.deleted_at
+		          ) AS last_message,
+		          m.created_at AS last_message_at
+		   FROM messages m
+		   WHERE m.room_id = rm.room_id
+		   ORDER BY m.created_at DESC
+		   LIMIT 1
+		 ) lm ON TRUE
+		 WHERE rm.user_id = $1
+		 ORDER BY lm.last_message_at DESC NULLS LAST, rm.room_id
+		 LIMIT $2`,
+		userID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list room conversation heads: %w", err)
+	}
+	defer rows.Close()
+
+	var heads []*model.RoomConversationHead
+	for rows.Next() {
+		head := &model.RoomConversationHead{}
+		var rawLastMessage []byte
+		if err := rows.Scan(&head.RoomID, &head.Name, &head.Description, &rawLastMessage); err != nil {
+			return nil, fmt.Errorf("scan room conversation head row: %w", err)
+		}
+		if len(rawLastMessage) > 0 {
+			msg := &model.Message{}
+			if err := json.Unmarshal(rawLastMessage, msg); err != nil {
+				return nil, fmt.Errorf("decode room conversation message: %w", err)
+			}
+			head.LastMessage = msg
+		}
+		heads = append(heads, head)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room conversation head rows: %w", err)
+	}
+
+	return heads, nil
 }
 
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {

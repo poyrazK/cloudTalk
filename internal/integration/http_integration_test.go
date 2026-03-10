@@ -328,6 +328,78 @@ func TestRoomUnreadCountsIntegration(t *testing.T) {
 	}
 }
 
+func TestRoomConversationsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "room-conv-owner")
+	member := registerAndLogin(t, ts.URL, "room-conv-member")
+
+	createRoom := func(name string) model.Room {
+		t.Helper()
+		resp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", owner.AccessToken, map[string]string{
+			"name":        name,
+			"description": "integration",
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create room %s status: got=%d", name, resp.StatusCode)
+		}
+		return decodeJSON[model.Room](t, resp)
+	}
+
+	roomA := createRoom("room-conv-a")
+	roomB := createRoom("room-conv-b")
+	roomC := createRoom("room-conv-c")
+
+	for _, room := range []model.Room{roomA, roomB, roomC} {
+		joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
+		if joinResp.StatusCode != http.StatusNoContent {
+			t.Fatalf("join room %s status: got=%d", room.Name, joinResp.StatusCode)
+		}
+	}
+
+	now := time.Now().UTC()
+	_, err := env.Pool.Exec(ctx,
+		`INSERT INTO messages (id, room_id, sender_id, content, created_at) VALUES ($1,$2,$3,$4,$5)`,
+		uuid.New(), roomA.ID, owner.UserID, "a-latest", now.Add(2*time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("insert roomA message: %v", err)
+	}
+	_, err = env.Pool.Exec(ctx,
+		`INSERT INTO messages (id, room_id, sender_id, content, created_at, deleted_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		uuid.New(), roomB.ID, owner.UserID, "b-latest-deleted", now.Add(1*time.Minute), now,
+	)
+	if err != nil {
+		t.Fatalf("insert roomB message: %v", err)
+	}
+
+	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/conversations?limit=50", member.AccessToken, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("room conversations status: got=%d", resp.StatusCode)
+	}
+	conversations := decodeJSON[[]model.RoomConversation](t, resp)
+	if len(conversations) != 3 {
+		t.Fatalf("expected 3 room conversations, got %d", len(conversations))
+	}
+
+	if conversations[0].RoomID != roomA.ID || conversations[0].UnreadCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "a-latest" {
+		t.Fatalf("unexpected first room conversation: %+v", conversations[0])
+	}
+	if conversations[1].RoomID != roomB.ID || conversations[1].UnreadCount != 1 || conversations[1].LastMessage == nil || conversations[1].LastMessage.Content != "b-latest-deleted" || conversations[1].LastMessage.DeletedAt == nil {
+		t.Fatalf("unexpected second room conversation: %+v", conversations[1])
+	}
+	if conversations[2].RoomID != roomC.ID || conversations[2].UnreadCount != 0 || conversations[2].LastMessage != nil {
+		t.Fatalf("unexpected third room conversation: %+v", conversations[2])
+	}
+}
+
 type authUser struct {
 	UserID      uuid.UUID
 	AccessToken string

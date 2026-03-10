@@ -33,6 +33,21 @@ type RoomUnreadCount struct {
 	Count  int       `db:"count"   json:"count"`
 }
 
+type RoomConversationHead struct {
+	RoomID      uuid.UUID `db:"room_id"     json:"room_id"`
+	Name        string    `db:"name"        json:"name"`
+	Description string    `db:"description" json:"description"`
+	LastMessage *Message  `json:"last_message"`
+}
+
+type RoomConversation struct {
+	RoomID      uuid.UUID `json:"room_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	UnreadCount int       `json:"unread_count"`
+	LastMessage *Message  `json:"last_message"`
+}
+
 type Message struct {
 	ID        uuid.UUID  `db:"id"         json:"id"`
 	RoomID    uuid.UUID  `db:"room_id"    json:"room_id"`
