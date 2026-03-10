@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -95,7 +96,7 @@ func (s *RoomService) MarkRead(ctx context.Context, roomID, userID uuid.UUID) er
 		return fmt.Errorf("check room member: %w", err)
 	}
 	if !ok {
-		return fmt.Errorf("forbidden: not a room member")
+		return errors.New("forbidden: not a room member")
 	}
 	if err := s.rooms.MarkRoomRead(ctx, roomID, userID, time.Now().UTC()); err != nil {
 		return fmt.Errorf("mark room read: %w", err)
