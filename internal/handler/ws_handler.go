@@ -213,6 +213,9 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 
 	case "typing":
 		h.handleTyping(client, msg)
+
+	case "typing_dm":
+		h.handleDMTyping(client, msg)
 	}
 }
 
@@ -414,5 +417,34 @@ func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
 		Payload:  payload,
 	}); err != nil {
 		slog.Error("ws: publish typing to kafka", "err", err)
+	}
+}
+
+func (h *WSHandler) handleDMTyping(client *hub.Client, msg incomingMsg) {
+	toID, err := uuid.Parse(msg.To)
+	if err != nil {
+		return
+	}
+	if toID == client.UserID {
+		slog.Warn("ws: self dm typing forbidden", "user_id", client.UserID)
+		return
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"user_id":    client.UserID.String(),
+		"to_user_id": toID.String(),
+		"typing":     msg.Typing,
+	})
+	if err != nil {
+		slog.Error("ws: marshal dm typing payload", "err", err)
+		return
+	}
+	if err := h.producer.Publish(kafka.TopicDMMessages, toID.String(), kafka.ChatEvent{
+		Type:     "typing_dm",
+		SenderID: client.UserID.String(),
+		ToUserID: toID.String(),
+		Payload:  payload,
+	}); err != nil {
+		slog.Error("ws: publish dm typing to kafka", "err", err)
 	}
 }

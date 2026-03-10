@@ -239,6 +239,9 @@ func realtimeFanOut(h *hub.Hub, topic string, evt kafka.ChatEvent) {
 			"payload": evt.Payload,
 		})
 		h.BroadcastUser(toID, hub.Event{Data: out})
+		if evt.Type == "typing_dm" {
+			return
+		}
 
 		senderID, err := uuid.Parse(evt.SenderID)
 		if err == nil && senderID != toID {

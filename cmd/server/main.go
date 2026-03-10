@@ -210,6 +210,9 @@ func fanOut(h *hub.Hub, topic string, evt kafka.ChatEvent) {
 			"payload": evt.Payload,
 		})
 		h.BroadcastUser(toID, hub.Event{Data: out})
+		if evt.Type == "typing_dm" {
+			return
+		}
 		// also deliver to sender's local client if connected here
 		senderID, err := uuid.Parse(evt.SenderID)
 		if err == nil && senderID != toID {
