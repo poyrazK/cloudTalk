@@ -55,6 +55,18 @@ type DMUnreadCount struct {
 	Count  int       `db:"count"   json:"count"`
 }
 
+type DMConversationHead struct {
+	UserID      uuid.UUID      `db:"user_id" json:"user_id"`
+	LastMessage *DirectMessage `json:"last_message"`
+}
+
+type DMConversation struct {
+	UserID      uuid.UUID      `json:"user_id"`
+	Username    string         `json:"username"`
+	UnreadCount int            `json:"unread_count"`
+	LastMessage *DirectMessage `json:"last_message"`
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID `db:"id"`
 	UserID    uuid.UUID `db:"user_id"`

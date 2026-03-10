@@ -94,6 +94,60 @@ func (r *MessageRepo) ListDMUnreadCounts(ctx context.Context, userID uuid.UUID) 
 	return counts, nil
 }
 
+func (r *MessageRepo) ListDMConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.DMConversationHead, error) {
+	rows, err := r.db.Query(ctx,
+		`WITH dm_with_partner AS (
+			SELECT
+				CASE WHEN sender_id=$1 THEN receiver_id ELSE sender_id END AS partner_id,
+				id, sender_id, receiver_id, content, created_at, delivered_at, read_at, edited_at, deleted_at
+			FROM direct_messages
+			WHERE sender_id=$1 OR receiver_id=$1
+		), latest_per_partner AS (
+			SELECT DISTINCT ON (partner_id)
+				partner_id,
+				id, sender_id, receiver_id, content, created_at, delivered_at, read_at, edited_at, deleted_at
+			FROM dm_with_partner
+			ORDER BY partner_id, created_at DESC
+		)
+		SELECT
+			partner_id,
+			id, sender_id, receiver_id, content, created_at, delivered_at, read_at, edited_at, deleted_at
+		FROM latest_per_partner
+		ORDER BY created_at DESC
+		LIMIT $2`,
+		userID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list dm conversation heads: %w", err)
+	}
+	defer rows.Close()
+
+	var heads []*model.DMConversationHead
+	for rows.Next() {
+		head := &model.DMConversationHead{LastMessage: &model.DirectMessage{}}
+		if err := rows.Scan(
+			&head.UserID,
+			&head.LastMessage.ID,
+			&head.LastMessage.SenderID,
+			&head.LastMessage.ReceiverID,
+			&head.LastMessage.Content,
+			&head.LastMessage.CreatedAt,
+			&head.LastMessage.DeliveredAt,
+			&head.LastMessage.ReadAt,
+			&head.LastMessage.EditedAt,
+			&head.LastMessage.DeletedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan dm conversation head row: %w", err)
+		}
+		heads = append(heads, head)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dm conversation head rows: %w", err)
+	}
+
+	return heads, nil
+}
+
 func (r *MessageRepo) UpdateDMContent(ctx context.Context, id uuid.UUID, content string, editedAt time.Time) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE direct_messages

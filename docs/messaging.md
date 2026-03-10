@@ -42,6 +42,31 @@ API:
 
 - `GET /api/v1/dms/unread-counts`
 
+## Conversation list (DM)
+
+DM conversations are exposed as one row per partner user, ordered by latest message timestamp.
+
+Each conversation item contains:
+
+- `user_id`
+- `username`
+- `unread_count`
+- `last_message`
+
+API:
+
+- `GET /api/v1/dms/conversations`
+
+Query params:
+
+- `limit` (1-100, default 50)
+
+Conversation semantics:
+
+- `last_message` is the latest DM between current user and partner.
+- `unread_count` counts inbound DMs where `read_at IS NULL`.
+- Soft-deleted messages can still appear as `last_message` with `deleted_at` set.
+
 ## Edit and soft delete
 
 Both room messages and DMs support edit and soft delete.

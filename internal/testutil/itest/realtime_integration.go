@@ -52,7 +52,7 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 	publisher := loopbackPublisher{h: h}
 
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, publisher)
+	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, publisher)
 	presenceSvc := service.NewPresenceService(publisher, h)
 	wsH := handler.NewWSHandler(auth, h, msgSvc, presenceSvc, nil, nil)
 	authH := handler.NewAuthHandler(auth)
@@ -79,6 +79,7 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 			r.Get("/dms/{userId}/messages", dmH.Messages)
 			r.Get("/dms/unread-counts", dmH.UnreadCounts)
+			r.Get("/dms/conversations", dmH.Conversations)
 		})
 	})
 
@@ -118,7 +119,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 	}
 
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, producer)
+	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, producer)
 	presenceSvc := service.NewPresenceService(producer, h)
 	wsH := handler.NewWSHandler(auth, h, msgSvc, presenceSvc, producer, nil)
 	authH := handler.NewAuthHandler(auth)
@@ -158,6 +159,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 			r.Get("/dms/{userId}/messages", dmH.Messages)
 			r.Get("/dms/unread-counts", dmH.UnreadCounts)
+			r.Get("/dms/conversations", dmH.Conversations)
 		})
 	})
 

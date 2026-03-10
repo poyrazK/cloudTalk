@@ -83,6 +83,8 @@ type fakeMessageRepo struct {
 	saveErr          error
 	listResp         []*model.DirectMessage
 	listErr          error
+	conversationResp []*model.DMConversationHead
+	conversationErr  error
 	unreadCountsResp []*model.DMUnreadCount
 	unreadCountsErr  error
 	savedDM          *model.DirectMessage
@@ -107,6 +109,13 @@ func (f *fakeMessageRepo) ListDMs(_ context.Context, _, _ uuid.UUID, _ time.Time
 		return nil, f.listErr
 	}
 	return f.listResp, nil
+}
+
+func (f *fakeMessageRepo) ListDMConversationHeads(_ context.Context, _ uuid.UUID, _ int) ([]*model.DMConversationHead, error) {
+	if f.conversationErr != nil {
+		return nil, f.conversationErr
+	}
+	return f.conversationResp, nil
 }
 
 func (f *fakeMessageRepo) ListDMUnreadCounts(_ context.Context, _ uuid.UUID) ([]*model.DMUnreadCount, error) {
@@ -185,6 +194,22 @@ type fakePublisher struct {
 	publishN int
 }
 
+type fakeMessageUserRepo struct {
+	users map[uuid.UUID]*model.User
+	err   error
+}
+
+func (f *fakeMessageUserRepo) GetByID(_ context.Context, id uuid.UUID) (*model.User, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	u, ok := f.users[id]
+	if !ok {
+		return nil, errors.New("user not found")
+	}
+	return u, nil
+}
+
 func (f *fakePublisher) Publish(topic, key string, evt kafka.ChatEvent) error {
 	f.topic = topic
 	f.key = key
@@ -197,7 +222,7 @@ func TestMessageServiceSendRoomMessageRequiresMembership(t *testing.T) {
 	t.Parallel()
 
 	rr := &fakeMessageRoomRepo{isMember: false}
-	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakePublisher{})
+	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.SendRoomMessage(context.Background(), uuid.New(), uuid.New(), "hello")
 	if !errors.Is(err, ErrRoomMembershipRequired) {
@@ -209,7 +234,7 @@ func TestMessageServiceSendRoomMessageMembershipCheckFailure(t *testing.T) {
 	t.Parallel()
 
 	rr := &fakeMessageRoomRepo{isMemberErr: errors.New("db timeout")}
-	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakePublisher{})
+	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.SendRoomMessage(context.Background(), uuid.New(), uuid.New(), "hello")
 	if !errors.Is(err, ErrRoomMembershipCheck) {
@@ -224,7 +249,7 @@ func TestMessageServiceSendRoomMessagePublishes(t *testing.T) {
 	pub := &fakePublisher{}
 	rid := uuid.New()
 	sid := uuid.New()
-	svc := NewMessageService(rr, &fakeMessageRepo{}, pub)
+	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakeMessageUserRepo{}, pub)
 
 	msg, err := svc.SendRoomMessage(context.Background(), rid, sid, "hello")
 	if err != nil {
@@ -243,7 +268,7 @@ func TestMessageServiceSendDMPublishFailureDoesNotFailCall(t *testing.T) {
 
 	mr := &fakeMessageRepo{}
 	pub := &fakePublisher{err: errors.New("kafka down")}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, pub)
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, pub)
 
 	dm, err := svc.SendDM(context.Background(), uuid.New(), uuid.New(), "ping")
 	if err != nil {
@@ -258,7 +283,7 @@ func TestMessageServiceSendDMToSelfForbidden(t *testing.T) {
 	t.Parallel()
 
 	uid := uuid.New()
-	svc := NewMessageService(&fakeMessageRoomRepo{}, &fakeMessageRepo{}, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, &fakeMessageRepo{}, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.SendDM(context.Background(), uid, uid, "ping")
 	if !errors.Is(err, ErrDMToSelfForbidden) {
@@ -270,7 +295,7 @@ func TestMessageServiceSendDMPersistenceError(t *testing.T) {
 	t.Parallel()
 
 	mr := &fakeMessageRepo{saveErr: errors.New("write failed")}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.SendDM(context.Background(), uuid.New(), uuid.New(), "ping")
 	if !errors.Is(err, ErrMessagePersistence) {
@@ -284,7 +309,7 @@ func TestMessageServiceHistoryDelegation(t *testing.T) {
 	now := time.Now()
 	rr := &fakeMessageRoomRepo{listResp: []*model.Message{{ID: uuid.New(), CreatedAt: now}}}
 	mr := &fakeMessageRepo{listResp: []*model.DirectMessage{{ID: uuid.New(), CreatedAt: now}}}
-	svc := NewMessageService(rr, mr, &fakePublisher{})
+	svc := NewMessageService(rr, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	roomMsgs, err := svc.RoomHistory(context.Background(), uuid.New(), now, 20)
 	if err != nil || len(roomMsgs) != 1 {
@@ -300,7 +325,7 @@ func TestMessageServiceDMUnreadCountsDelegation(t *testing.T) {
 	t.Parallel()
 
 	mr := &fakeMessageRepo{unreadCountsResp: []*model.DMUnreadCount{{UserID: uuid.New(), Count: 2}}}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	counts, err := svc.DMUnreadCounts(context.Background(), uuid.New())
 	if err != nil {
@@ -318,7 +343,7 @@ func TestMessageServiceMarkDMDelivered(t *testing.T) {
 	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: receiverID}
 	mr := &fakeMessageRepo{dmByID: dm}
 	pub := &fakePublisher{}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, pub)
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, pub)
 
 	updated, err := svc.MarkDMDelivered(context.Background(), dm.ID, receiverID)
 	if err != nil {
@@ -337,7 +362,7 @@ func TestMessageServiceMarkDMReadForbiddenForSender(t *testing.T) {
 
 	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: uuid.New()}
 	mr := &fakeMessageRepo{dmByID: dm}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.MarkDMRead(context.Background(), dm.ID, dm.SenderID)
 	if !errors.Is(err, ErrDMReceiptForbidden) {
@@ -351,7 +376,7 @@ func TestMessageServiceMarkDMReadSetsReadAndDelivered(t *testing.T) {
 	receiverID := uuid.New()
 	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: receiverID}
 	mr := &fakeMessageRepo{dmByID: dm}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	updated, err := svc.MarkDMRead(context.Background(), dm.ID, receiverID)
 	if err != nil {
@@ -369,7 +394,7 @@ func TestMessageServiceEditRoomMessage(t *testing.T) {
 	m := &model.Message{ID: uuid.New(), SenderID: actor, Content: "old"}
 	rr := &fakeMessageRoomRepo{messageByID: m}
 	pub := &fakePublisher{}
-	svc := NewMessageService(rr, &fakeMessageRepo{}, pub)
+	svc := NewMessageService(rr, &fakeMessageRepo{}, &fakeMessageUserRepo{}, pub)
 
 	updated, err := svc.EditRoomMessage(context.Background(), m.ID, actor, "new")
 	if err != nil {
@@ -388,7 +413,7 @@ func TestMessageServiceDeleteDMForbiddenForNonSender(t *testing.T) {
 
 	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), ReceiverID: uuid.New()}
 	mr := &fakeMessageRepo{dmByID: dm}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.DeleteDM(context.Background(), dm.ID, dm.ReceiverID)
 	if !errors.Is(err, ErrMessageDeleteForbidden) {
@@ -402,10 +427,43 @@ func TestMessageServiceEditDMRejectedWhenDeleted(t *testing.T) {
 	now := time.Now().UTC()
 	dm := &model.DirectMessage{ID: uuid.New(), SenderID: uuid.New(), DeletedAt: &now}
 	mr := &fakeMessageRepo{dmByID: dm}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakePublisher{})
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, &fakeMessageUserRepo{}, &fakePublisher{})
 
 	_, err := svc.EditDM(context.Background(), dm.ID, dm.SenderID, "updated")
 	if !errors.Is(err, ErrMessageDeleted) {
 		t.Fatalf("expected ErrMessageDeleted, got %v", err)
+	}
+}
+
+func TestMessageServiceDMConversations(t *testing.T) {
+	t.Parallel()
+
+	partnerID := uuid.New()
+	now := time.Now().UTC()
+	mr := &fakeMessageRepo{
+		conversationResp: []*model.DMConversationHead{{
+			UserID: partnerID,
+			LastMessage: &model.DirectMessage{
+				ID:         uuid.New(),
+				SenderID:   partnerID,
+				ReceiverID: uuid.New(),
+				Content:    "latest",
+				CreatedAt:  now,
+			},
+		}},
+		unreadCountsResp: []*model.DMUnreadCount{{UserID: partnerID, Count: 4}},
+	}
+	ur := &fakeMessageUserRepo{users: map[uuid.UUID]*model.User{partnerID: {ID: partnerID, Username: "alice"}}}
+	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, ur, &fakePublisher{})
+
+	convs, err := svc.DMConversations(context.Background(), uuid.New(), 50)
+	if err != nil {
+		t.Fatalf("dm conversations failed: %v", err)
+	}
+	if len(convs) != 1 {
+		t.Fatalf("expected 1 conversation, got %d", len(convs))
+	}
+	if convs[0].Username != "alice" || convs[0].UnreadCount != 4 {
+		t.Fatalf("unexpected conversation projection: %+v", convs[0])
 	}
 }

@@ -65,3 +65,20 @@ func (h *DMHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResp(w, http.StatusOK, counts)
 }
+
+func (h *DMHandler) Conversations(w http.ResponseWriter, r *http.Request) {
+	callerID, _ := authsvc.UserIDFromContext(r.Context())
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+
+	conversations, err := h.messages.DMConversations(r.Context(), callerID, limit)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, conversations)
+}

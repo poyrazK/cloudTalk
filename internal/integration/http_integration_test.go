@@ -223,6 +223,54 @@ func TestDMUnreadCountsIntegration(t *testing.T) {
 	}
 }
 
+func TestDMConversationsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	if err := env.ResetDB(context.Background()); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "conv-owner")
+	p1 := registerAndLogin(t, ts.URL, "conv-p1")
+	p2 := registerAndLogin(t, ts.URL, "conv-p2")
+
+	now := time.Now().UTC()
+	dms := []*model.DirectMessage{
+		{ID: uuid.New(), SenderID: p1.UserID, ReceiverID: owner.UserID, Content: "old", CreatedAt: now.Add(-5 * time.Minute)},
+		{ID: uuid.New(), SenderID: owner.UserID, ReceiverID: p1.UserID, Content: "latest-p1", CreatedAt: now.Add(-1 * time.Minute)},
+		{ID: uuid.New(), SenderID: p2.UserID, ReceiverID: owner.UserID, Content: "latest-p2", CreatedAt: now.Add(-2 * time.Minute)},
+	}
+	for _, dm := range dms {
+		if err := app.Messages.SaveDM(context.Background(), dm); err != nil {
+			t.Fatalf("save dm %s: %v", dm.ID, err)
+		}
+	}
+
+	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/conversations?limit=50", owner.AccessToken, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("conversations status: got=%d", resp.StatusCode)
+	}
+	var convs []model.DMConversation
+	decodeInto(t, resp, &convs)
+	if len(convs) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(convs))
+	}
+	got := map[uuid.UUID]model.DMConversation{}
+	for _, c := range convs {
+		got[c.UserID] = c
+	}
+	convP1, ok := got[p1.UserID]
+	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" {
+		t.Fatalf("unexpected p1 conversation: %+v", convP1)
+	}
+	convP2, ok := got[p2.UserID]
+	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" {
+		t.Fatalf("unexpected p2 conversation: %+v", convP2)
+	}
+}
+
 type authUser struct {
 	UserID      uuid.UUID
 	AccessToken string

@@ -16,6 +16,7 @@ import (
 type MessageService struct {
 	roomRepo    messageRoomRepository
 	messageRepo messageRepository
+	userRepo    messageUserRepository
 	producer    eventPublisher
 }
 
@@ -44,6 +45,7 @@ type messageRoomRepository interface {
 type messageRepository interface {
 	SaveDM(ctx context.Context, m *model.DirectMessage) error
 	ListDMUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.DMUnreadCount, error)
+	ListDMConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.DMConversationHead, error)
 	ListDMs(ctx context.Context, userA, userB uuid.UUID, before time.Time, limit int) ([]*model.DirectMessage, error)
 	GetDMByID(ctx context.Context, id uuid.UUID) (*model.DirectMessage, error)
 	MarkDMDelivered(ctx context.Context, dmID, receiverID uuid.UUID, at time.Time) error
@@ -52,12 +54,16 @@ type messageRepository interface {
 	SoftDeleteDM(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
 }
 
+type messageUserRepository interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+}
+
 type eventPublisher interface {
 	Publish(topic, key string, evt kafka.ChatEvent) error
 }
 
-func NewMessageService(rr messageRoomRepository, mr messageRepository, p eventPublisher) *MessageService {
-	return &MessageService{roomRepo: rr, messageRepo: mr, producer: p}
+func NewMessageService(rr messageRoomRepository, mr messageRepository, ur messageUserRepository, p eventPublisher) *MessageService {
+	return &MessageService{roomRepo: rr, messageRepo: mr, userRepo: ur, producer: p}
 }
 
 func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID uuid.UUID, content string) (*model.Message, error) {
@@ -150,6 +156,37 @@ func (s *MessageService) DMUnreadCounts(ctx context.Context, userID uuid.UUID) (
 		return nil, fmt.Errorf("load dm unread counts: %w", err)
 	}
 	return counts, nil
+}
+
+func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, limit int) ([]*model.DMConversation, error) {
+	heads, err := s.messageRepo.ListDMConversationHeads(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("load dm conversation heads: %w", err)
+	}
+	counts, err := s.messageRepo.ListDMUnreadCounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load dm unread counts for conversations: %w", err)
+	}
+	countMap := make(map[uuid.UUID]int, len(counts))
+	for _, c := range counts {
+		countMap[c.UserID] = c.Count
+	}
+
+	convs := make([]*model.DMConversation, 0, len(heads))
+	for _, head := range heads {
+		user, err := s.userRepo.GetByID(ctx, head.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("load conversation user: %w", err)
+		}
+		convs = append(convs, &model.DMConversation{
+			UserID:      user.ID,
+			Username:    user.Username,
+			UnreadCount: countMap[user.ID],
+			LastMessage: head.LastMessage,
+		})
+	}
+
+	return convs, nil
 }
 
 func (s *MessageService) MarkDMDelivered(ctx context.Context, dmID, actorID uuid.UUID) (*model.DirectMessage, error) {

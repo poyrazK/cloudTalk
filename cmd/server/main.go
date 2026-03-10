@@ -74,7 +74,7 @@ func run() error {
 
 	// --- Services ---
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, producer)
+	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, producer)
 	presenceSvc := service.NewPresenceService(producer, h)
 
 	// --- Kafka consumer fan-out ---
@@ -141,6 +141,7 @@ func run() error {
 
 			r.Get("/dms/{userId}/messages", dmH.Messages)
 			r.Get("/dms/unread-counts", dmH.UnreadCounts)
+			r.Get("/dms/conversations", dmH.Conversations)
 		})
 	})
 
