@@ -32,7 +32,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 
 	auth := authsvc.NewService(userRepo, "integration-secret", 15, 7)
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, nilPublisher{})
+	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, nilPublisher{})
 
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
@@ -58,6 +58,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 			r.Get("/dms/{userId}/messages", dmH.Messages)
 			r.Get("/dms/unread-counts", dmH.UnreadCounts)
+			r.Get("/dms/conversations", dmH.Conversations)
 		})
 	})
 
