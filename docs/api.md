@@ -172,6 +172,43 @@ Returns unread inbound DM counts grouped by sender user.
 
 Only messages where the authenticated user is the `receiver_id` and `read_at` is null are counted.
 
+### GET /dms/conversations
+Returns the DM conversation list for the authenticated user.
+
+Each item includes:
+
+- conversation partner user
+- latest message in that thread
+- unread count for inbound DMs from that partner
+
+**Query params**
+
+| Param | Type      | Default | Description                    |
+|-------|-----------|---------|--------------------------------|
+| limit | int(1-100) | 50      | Max number of conversations    |
+
+**Response** `200`
+```json
+[
+  {
+    "user_id": "<uuid>",
+    "username": "alice",
+    "unread_count": 3,
+    "last_message": {
+      "id": "<uuid>",
+      "sender_id": "<uuid>",
+      "receiver_id": "<uuid>",
+      "content": "See you soon",
+      "created_at": "...",
+      "delivered_at": "...",
+      "read_at": "...",
+      "edited_at": "...",
+      "deleted_at": null
+    }
+  }
+]
+```
+
 ---
 
 ## Misc
