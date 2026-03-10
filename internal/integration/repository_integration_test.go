@@ -249,6 +249,64 @@ func TestRepositoryDMConversationHeadsIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryRoomUnreadCountsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	roomRepo := repository.NewRoomRepo(env.Pool)
+
+	owner := &model.User{ID: uuid.New(), Username: "owner-ru", Email: fmt.Sprintf("owner-ru-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	u2 := &model.User{ID: uuid.New(), Username: "u2-ru", Email: fmt.Sprintf("u2-ru-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	for _, u := range []*model.User{owner, u2} {
+		if err := userRepo.Create(ctx, u); err != nil {
+			t.Fatalf("create user %s: %v", u.Username, err)
+		}
+	}
+
+	room := &model.Room{ID: uuid.New(), Name: "room-ru", Description: "desc", CreatedBy: owner.ID}
+	if err := roomRepo.Create(ctx, room); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+	if err := roomRepo.AddMember(ctx, room.ID, owner.ID); err != nil {
+		t.Fatalf("add owner member: %v", err)
+	}
+	if err := roomRepo.AddMember(ctx, room.ID, u2.ID); err != nil {
+		t.Fatalf("add u2 member: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := roomRepo.InitRoomReadState(ctx, room.ID, u2.ID, now); err != nil {
+		t.Fatalf("init read state: %v", err)
+	}
+
+	insertMessageAt(t, env, room.ID, owner.ID, "m1", now.Add(1*time.Minute))
+	insertMessageAt(t, env, room.ID, owner.ID, "m2", now.Add(2*time.Minute))
+	insertMessageAt(t, env, room.ID, u2.ID, "self message", now.Add(3*time.Minute))
+
+	counts, err := roomRepo.ListRoomUnreadCounts(ctx, u2.ID)
+	if err != nil {
+		t.Fatalf("list room unread counts: %v", err)
+	}
+	if len(counts) != 1 || counts[0].RoomID != room.ID || counts[0].Count != 2 {
+		t.Fatalf("unexpected unread counts before read: %+v", counts)
+	}
+
+	if err := roomRepo.MarkRoomRead(ctx, room.ID, u2.ID, now.Add(5*time.Minute)); err != nil {
+		t.Fatalf("mark room read: %v", err)
+	}
+	countsAfter, err := roomRepo.ListRoomUnreadCounts(ctx, u2.ID)
+	if err != nil {
+		t.Fatalf("list room unread counts after read: %v", err)
+	}
+	if len(countsAfter) != 1 || countsAfter[0].Count != 0 {
+		t.Fatalf("unexpected unread counts after read: %+v", countsAfter)
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),

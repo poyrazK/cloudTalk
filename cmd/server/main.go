@@ -112,7 +112,7 @@ func run() error {
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
-	wsH := handler.NewWSHandler(auth, h, msgSvc, presenceSvc, producer, cfg.AllowedOrigins)
+	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, cfg.AllowedOrigins)
 
 	// --- Router ---
 	r := chi.NewRouter()
@@ -134,6 +134,7 @@ func run() error {
 
 			r.Post("/rooms", roomH.Create)
 			r.Get("/rooms", roomH.List)
+			r.Get("/rooms/unread-counts", roomH.UnreadCounts)
 			r.Get("/rooms/{id}", roomH.Get)
 			r.Post("/rooms/{id}/join", roomH.Join)
 			r.Post("/rooms/{id}/leave", roomH.Leave)

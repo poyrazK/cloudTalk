@@ -72,6 +72,68 @@ func (r *RoomRepo) AddMember(ctx context.Context, roomID, userID uuid.UUID) erro
 	return nil
 }
 
+func (r *RoomRepo) InitRoomReadState(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO room_read_state (room_id, user_id, last_read_at)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (room_id, user_id) DO NOTHING`,
+		roomID, userID, at,
+	)
+	if err != nil {
+		return fmt.Errorf("init room read state: %w", err)
+	}
+	return nil
+}
+
+func (r *RoomRepo) MarkRoomRead(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO room_read_state (room_id, user_id, last_read_at)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (room_id, user_id)
+		 DO UPDATE SET last_read_at = GREATEST(room_read_state.last_read_at, EXCLUDED.last_read_at)`,
+		roomID, userID, at,
+	)
+	if err != nil {
+		return fmt.Errorf("mark room read: %w", err)
+	}
+	return nil
+}
+
+func (r *RoomRepo) ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT rm.room_id,
+		        COUNT(m.id)::int AS count
+		 FROM room_members rm
+		 LEFT JOIN room_read_state rrs
+		   ON rrs.room_id = rm.room_id AND rrs.user_id = rm.user_id
+		 LEFT JOIN messages m
+		   ON m.room_id = rm.room_id
+		  AND m.sender_id <> $1
+		  AND m.created_at > COALESCE(rrs.last_read_at, rm.joined_at)
+		 WHERE rm.user_id = $1
+		 GROUP BY rm.room_id
+		 ORDER BY count DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list room unread counts: %w", err)
+	}
+	defer rows.Close()
+
+	var counts []*model.RoomUnreadCount
+	for rows.Next() {
+		c := &model.RoomUnreadCount{}
+		if err := rows.Scan(&c.RoomID, &c.Count); err != nil {
+			return nil, fmt.Errorf("scan room unread count row: %w", err)
+		}
+		counts = append(counts, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room unread count rows: %w", err)
+	}
+	return counts, nil
+}
+
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID,

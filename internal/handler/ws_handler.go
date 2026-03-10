@@ -37,6 +37,7 @@ type WSHandler struct {
 	upgrader websocket.Upgrader
 	auth     *authsvc.Service
 	hub      *hub.Hub
+	rooms    *service.RoomService
 	messages *service.MessageService
 	presence *service.PresenceService
 	producer *kafka.Producer
@@ -45,6 +46,7 @@ type WSHandler struct {
 func NewWSHandler(
 	auth *authsvc.Service,
 	h *hub.Hub,
+	rooms *service.RoomService,
 	messages *service.MessageService,
 	presence *service.PresenceService,
 	producer *kafka.Producer,
@@ -70,6 +72,7 @@ func NewWSHandler(
 		upgrader: u,
 		auth:     auth,
 		hub:      h,
+		rooms:    rooms,
 		messages: messages,
 		presence: presence,
 		producer: producer,
@@ -193,6 +196,9 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 	case "read_dm":
 		h.handleReadDM(ctx, client, msg)
 
+	case "read_room":
+		h.handleReadRoom(ctx, client, msg)
+
 	case "edit_message":
 		h.handleEditRoomMessage(ctx, client, msg)
 
@@ -300,6 +306,16 @@ func (h *WSHandler) handleReadDM(ctx context.Context, client *hub.Client, msg in
 		default:
 			slog.Error("ws: mark dm read", "err", err)
 		}
+	}
+}
+
+func (h *WSHandler) handleReadRoom(ctx context.Context, client *hub.Client, msg incomingMsg) {
+	roomID, err := uuid.Parse(msg.RoomID)
+	if err != nil {
+		return
+	}
+	if err := h.rooms.MarkRead(ctx, roomID, client.UserID); err != nil {
+		slog.Warn("ws: room read failed", "user_id", client.UserID, "room_id", roomID, "err", err)
 	}
 }
 

@@ -271,6 +271,63 @@ func TestDMConversationsIntegration(t *testing.T) {
 	}
 }
 
+func TestRoomUnreadCountsIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	if err := env.ResetDB(context.Background()); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "room-unread-owner")
+	member := registerAndLogin(t, ts.URL, "room-unread-member")
+
+	createRoomResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", owner.AccessToken, map[string]string{
+		"name":        "room-unread",
+		"description": "integration",
+	})
+	if createRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createRoomResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createRoomResp)
+
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
+	if joinResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
+	}
+
+	msg1 := &model.Message{ID: uuid.New(), RoomID: room.ID, SenderID: owner.UserID, Content: "one"}
+	msg2 := &model.Message{ID: uuid.New(), RoomID: room.ID, SenderID: owner.UserID, Content: "two"}
+	if err := app.Rooms.SaveMessage(context.Background(), msg1); err != nil {
+		t.Fatalf("save message1: %v", err)
+	}
+	if err := app.Rooms.SaveMessage(context.Background(), msg2); err != nil {
+		t.Fatalf("save message2: %v", err)
+	}
+
+	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/unread-counts", member.AccessToken, nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("room unread counts status: got=%d", resp.StatusCode)
+	}
+	counts := decodeJSON[[]model.RoomUnreadCount](t, resp)
+	if len(counts) == 0 {
+		t.Fatal("expected at least one room unread count")
+	}
+	var found bool
+	for _, c := range counts {
+		if c.RoomID == room.ID {
+			found = true
+			if c.Count != 2 {
+				t.Fatalf("expected room unread count=2, got %d", c.Count)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected unread count entry for created room")
+	}
+}
+
 type authUser struct {
 	UserID      uuid.UUID
 	AccessToken string
