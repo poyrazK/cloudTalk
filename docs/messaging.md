@@ -31,6 +31,15 @@ Notes:
 
 `read_at` is set when the recipient sends `read_dm` over WebSocket.
 
+### Typing indicators
+
+Typing indicators are ephemeral realtime signals and are not persisted.
+
+- Room typing uses WebSocket action `typing`.
+- DM typing uses WebSocket action `typing_dm`.
+- DM typing is recipient-only and not echoed to sender.
+- Typing signals do not affect unread counts or delivery/read receipts.
+
 ## Unread counts (DM)
 
 Unread DM counts are grouped by sender user ID.
