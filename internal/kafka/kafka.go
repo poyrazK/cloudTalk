@@ -19,7 +19,7 @@ const (
 
 // ChatEvent is the message envelope published to Kafka.
 type ChatEvent struct {
-	Type     string          `json:"type"` // "message" | "dm" | "typing" | "presence"
+	Type     string          `json:"type"` // "message" | "dm" | "typing" | "typing_dm" | "presence"
 	RoomID   string          `json:"room_id,omitempty"`
 	SenderID string          `json:"sender_id,omitempty"`
 	ToUserID string          `json:"to_user_id,omitempty"`

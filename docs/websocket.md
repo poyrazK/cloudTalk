@@ -86,6 +86,18 @@ Broadcast a typing indicator to all members of a room.
 { "type": "typing", "room_id": "<uuid>", "typing": true }
 ```
 
+### typing_dm
+Send a DM typing indicator to a specific user.
+```json
+{ "type": "typing_dm", "to": "<user_uuid>", "typing": true }
+```
+
+Behavior:
+
+- delivered only to the DM recipient
+- not echoed back to sender
+- self-DM typing is rejected
+
 ---
 
 ## Server → Client Messages
@@ -146,6 +158,15 @@ A user started or stopped typing in a room.
 {
   "type": "typing",
   "payload": { "user_id": "<uuid>", "room_id": "<uuid>", "typing": true }
+}
+```
+
+### typing_dm
+A user started or stopped typing in a DM thread.
+```json
+{
+  "type": "typing_dm",
+  "payload": { "user_id": "<uuid>", "to_user_id": "<uuid>", "typing": true }
 }
 ```
 
