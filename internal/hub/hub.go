@@ -47,6 +47,24 @@ func (h *Hub) BroadcastRoom(roomID uuid.UUID, evt Event) {
 	}
 }
 
+// BroadcastRoomExcept delivers an event to all locally-connected clients in the
+// given room except the excluded user.
+func (h *Hub) BroadcastRoomExcept(roomID, excludeUserID uuid.UUID, evt Event) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.clients {
+		if c.UserID == excludeUserID {
+			continue
+		}
+		if c.InRoom(roomID) {
+			select {
+			case c.Send <- evt:
+			default:
+			}
+		}
+	}
+}
+
 // BroadcastUser delivers an event to a specific user if they are connected locally.
 func (h *Hub) BroadcastUser(userID uuid.UUID, evt Event) {
 	h.mu.RLock()

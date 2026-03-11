@@ -194,10 +194,15 @@ func fanOut(h *hub.Hub, topic string, evt kafka.ChatEvent) {
 		if err != nil {
 			return
 		}
+		senderID, senderErr := uuid.Parse(evt.SenderID)
 		out, _ := json.Marshal(map[string]interface{}{
 			"type":    evt.Type,
 			"payload": evt.Payload,
 		})
+		if evt.Type == "typing" && senderErr == nil {
+			h.BroadcastRoomExcept(roomID, senderID, hub.Event{Data: out})
+			return
+		}
 		h.BroadcastRoom(roomID, hub.Event{Data: out})
 
 	case kafka.TopicDMMessages:

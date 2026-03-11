@@ -196,6 +196,133 @@ func TestWSDMReadReceiptFlow(t *testing.T) {
 	}
 }
 
+func TestWSRoomTypingExcludesSender(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackApp(env.Pool)
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	u1 := registerAndLogin(t, ts.URL, "typing-room-alice")
+	u2 := registerAndLogin(t, ts.URL, "typing-room-bob")
+	u3 := registerAndLogin(t, ts.URL, "typing-room-charlie")
+
+	createRoomResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", u1.AccessToken, map[string]string{
+		"name":        "typing-room",
+		"description": "integration",
+	})
+	if createRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createRoomResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createRoomResp)
+
+	for _, u := range []authUser{u2, u3} {
+		joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", u.AccessToken, nil)
+		if joinResp.StatusCode != http.StatusNoContent {
+			t.Fatalf("join room status for %s: got=%d", u.UserID.String(), joinResp.StatusCode)
+		}
+	}
+
+	c1 := wsDial(t, ts.URL, u1.AccessToken)
+	defer c1.Close()
+	c2 := wsDial(t, ts.URL, u2.AccessToken)
+	defer c2.Close()
+	c3 := wsDial(t, ts.URL, u3.AccessToken)
+	defer c3.Close()
+
+	for _, c := range []*websocket.Conn{c1, c2, c3} {
+		if err := c.WriteJSON(map[string]string{"type": "join_room", "room_id": room.ID.String()}); err != nil {
+			t.Fatalf("join_room send: %v", err)
+		}
+	}
+
+	if err := c1.WriteJSON(map[string]any{"type": "typing", "room_id": room.ID.String(), "typing": true}); err != nil {
+		t.Fatalf("typing true send: %v", err)
+	}
+
+	gotReceiver := waitForWSEvent(c2, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "typing" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["user_id"] == u1.UserID.String() && payload["room_id"] == room.ID.String() && payload["typing"] == true
+	})
+	if !gotReceiver {
+		t.Fatal("receiver did not get room typing start")
+	}
+
+	if got := waitForWSEvent(c1, 500*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing" }); got {
+		t.Fatal("sender unexpectedly received room typing event")
+	}
+
+	if err := c1.WriteJSON(map[string]any{"type": "typing", "room_id": room.ID.String(), "typing": false}); err != nil {
+		t.Fatalf("typing false send: %v", err)
+	}
+	gotStop := waitForWSEvent(c3, 5*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "typing" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["user_id"] == u1.UserID.String() && payload["room_id"] == room.ID.String() && payload["typing"] == false
+	})
+	if !gotStop {
+		t.Fatal("room typing stop event not received")
+	}
+}
+
+func TestWSRoomTypingRequiresMembership(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackApp(env.Pool)
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "typing-room-owner")
+	member := registerAndLogin(t, ts.URL, "typing-room-member")
+	outsider := registerAndLogin(t, ts.URL, "typing-room-outsider")
+
+	createRoomResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", owner.AccessToken, map[string]string{
+		"name":        "typing-room-membership",
+		"description": "integration",
+	})
+	if createRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createRoomResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createRoomResp)
+
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
+	if joinResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
+	}
+
+	cMember := wsDial(t, ts.URL, member.AccessToken)
+	defer cMember.Close()
+	cOutsider := wsDial(t, ts.URL, outsider.AccessToken)
+	defer cOutsider.Close()
+
+	for _, c := range []*websocket.Conn{cMember, cOutsider} {
+		if err := c.WriteJSON(map[string]string{"type": "join_room", "room_id": room.ID.String()}); err != nil {
+			t.Fatalf("join_room send: %v", err)
+		}
+	}
+
+	if err := cOutsider.WriteJSON(map[string]any{"type": "typing", "room_id": room.ID.String(), "typing": true}); err != nil {
+		t.Fatalf("outsider typing send: %v", err)
+	}
+
+	if got := waitForWSEvent(cMember, 700*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing" }); got {
+		t.Fatal("member unexpectedly received typing from outsider")
+	}
+}
+
 func TestWSDMTypingRecipientOnly(t *testing.T) {
 	env := itest.Start(t, itest.EnvOptions{})
 	app := itest.BuildRealtimeLoopbackApp(env.Pool)
