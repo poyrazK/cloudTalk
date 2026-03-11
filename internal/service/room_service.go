@@ -149,6 +149,7 @@ func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit
 
 	conversations := make([]*model.RoomConversation, 0, len(heads))
 	for _, head := range heads {
+		memberCount := len(membersByRoomID[head.RoomID])
 		onlineCount := 0
 		if s.presence != nil {
 			for _, memberID := range membersByRoomID[head.RoomID] {
@@ -161,6 +162,7 @@ func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit
 			RoomID:      head.RoomID,
 			Name:        head.Name,
 			Description: head.Description,
+			MemberCount: memberCount,
 			OnlineCount: onlineCount,
 			UnreadCount: countByRoomID[head.RoomID],
 			LastMessage: head.LastMessage,
