@@ -410,6 +410,19 @@ func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
 		slog.Error("ws: marshal typing payload", "err", err)
 		return
 	}
+	if h.producer == nil {
+		out, err := json.Marshal(map[string]interface{}{
+			"type":    "typing",
+			"payload": payload,
+		})
+		if err != nil {
+			slog.Error("ws: marshal local typing event", "err", err)
+			return
+		}
+		h.hub.BroadcastRoom(roomID, hub.Event{Data: out})
+		return
+	}
+
 	if err := h.producer.Publish(kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
 		Type:     "typing",
 		RoomID:   roomID.String(),
@@ -439,6 +452,19 @@ func (h *WSHandler) handleDMTyping(client *hub.Client, msg incomingMsg) {
 		slog.Error("ws: marshal dm typing payload", "err", err)
 		return
 	}
+	if h.producer == nil {
+		out, err := json.Marshal(map[string]interface{}{
+			"type":    "typing_dm",
+			"payload": payload,
+		})
+		if err != nil {
+			slog.Error("ws: marshal local dm typing event", "err", err)
+			return
+		}
+		h.hub.BroadcastUser(toID, hub.Event{Data: out})
+		return
+	}
+
 	if err := h.producer.Publish(kafka.TopicDMMessages, toID.String(), kafka.ChatEvent{
 		Type:     "typing_dm",
 		SenderID: client.UserID.String(),
