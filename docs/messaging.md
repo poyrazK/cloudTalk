@@ -84,6 +84,7 @@ Each conversation item contains:
 - `room_id`
 - `name`
 - `description`
+- `member_count`
 - `online_count`
 - `unread_count`
 - `last_message`
@@ -100,6 +101,7 @@ Conversation semantics:
 
 - `last_message` is the latest room message, including soft-deleted messages with `deleted_at` set.
 - rooms with no messages are included with `last_message = null`.
+- `member_count` is a snapshot of current room membership at request time.
 - `online_count` is a snapshot of currently online room members at request time.
 - `unread_count` follows room unread rules from the previous section.
 

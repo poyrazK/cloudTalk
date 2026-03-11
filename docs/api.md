@@ -159,6 +159,7 @@ Returns room conversation rows for the authenticated user, ordered by latest roo
 Each row includes:
 
 - room metadata (`room_id`, `name`, `description`)
+- `member_count` snapshot for current room members
 - `online_count` snapshot for current room members
 - `unread_count`
 - `last_message` (or `null` for rooms with no messages)
@@ -176,6 +177,7 @@ Each row includes:
     "room_id": "<uuid>",
     "name": "general",
     "description": "General discussion",
+    "member_count": 12,
     "online_count": 3,
     "unread_count": 3,
     "last_message": {
