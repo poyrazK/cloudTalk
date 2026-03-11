@@ -18,6 +18,7 @@ type MessageService struct {
 	messageRepo messageRepository
 	userRepo    messageUserRepository
 	producer    eventPublisher
+	presence    messagePresenceReader
 }
 
 var (
@@ -62,8 +63,16 @@ type eventPublisher interface {
 	Publish(topic, key string, evt kafka.ChatEvent) error
 }
 
+type messagePresenceReader interface {
+	IsOnline(userID uuid.UUID) bool
+}
+
 func NewMessageService(rr messageRoomRepository, mr messageRepository, ur messageUserRepository, p eventPublisher) *MessageService {
-	return &MessageService{roomRepo: rr, messageRepo: mr, userRepo: ur, producer: p}
+	return NewMessageServiceWithPresence(rr, mr, ur, p, nil)
+}
+
+func NewMessageServiceWithPresence(rr messageRoomRepository, mr messageRepository, ur messageUserRepository, p eventPublisher, pr messagePresenceReader) *MessageService {
+	return &MessageService{roomRepo: rr, messageRepo: mr, userRepo: ur, producer: p, presence: pr}
 }
 
 func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID uuid.UUID, content string) (*model.Message, error) {
@@ -181,6 +190,7 @@ func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, 
 		convs = append(convs, &model.DMConversation{
 			UserID:      user.ID,
 			Username:    user.Username,
+			Online:      s.presence != nil && s.presence.IsOnline(user.ID),
 			UnreadCount: countMap[user.ID],
 			LastMessage: head.LastMessage,
 		})

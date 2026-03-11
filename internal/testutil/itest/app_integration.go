@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 	"github.com/poyrazk/cloudtalk/internal/handler"
+	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
 	"github.com/poyrazk/cloudtalk/internal/repository"
 	"github.com/poyrazk/cloudtalk/internal/service"
@@ -21,6 +22,7 @@ type App struct {
 	Users    *repository.UserRepo
 	Rooms    *repository.RoomRepo
 	Messages *repository.MessageRepo
+	Presence *service.PresenceService
 }
 
 // BuildHTTPApp wires repositories/services/handlers similar to cmd/server/main.go.
@@ -31,8 +33,10 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 	msgRepo := repository.NewMessageRepo(pool)
 
 	auth := authsvc.NewService(userRepo, "integration-secret", 15, 7)
+	h := hub.New()
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, nilPublisher{})
+	presenceSvc := service.NewPresenceService(nilPublisher{}, h)
+	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, nilPublisher{}, presenceSvc)
 
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
@@ -70,6 +74,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 		Users:    userRepo,
 		Rooms:    roomRepo,
 		Messages: msgRepo,
+		Presence: presenceSvc,
 	}
 }
 

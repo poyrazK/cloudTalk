@@ -74,8 +74,8 @@ func run() error {
 
 	// --- Services ---
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, producer)
 	presenceSvc := service.NewPresenceService(producer, h)
+	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 
 	// --- Kafka consumer fan-out ---
 	topics := []string{kafka.TopicRoomMessages, kafka.TopicDMMessages, kafka.TopicPresence}

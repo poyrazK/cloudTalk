@@ -83,6 +83,7 @@ type DMConversationHead struct {
 type DMConversation struct {
 	UserID      uuid.UUID      `json:"user_id"`
 	Username    string         `json:"username"`
+	Online      bool           `json:"online"`
 	UnreadCount int            `json:"unread_count"`
 	LastMessage *DirectMessage `json:"last_message"`
 }

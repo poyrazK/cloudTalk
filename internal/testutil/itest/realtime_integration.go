@@ -52,8 +52,8 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 	publisher := loopbackPublisher{h: h}
 
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, publisher)
 	presenceSvc := service.NewPresenceService(publisher, h)
+	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, publisher, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, nil, nil)
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
@@ -121,8 +121,8 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 	}
 
 	roomSvc := service.NewRoomService(roomRepo)
-	msgSvc := service.NewMessageService(roomRepo, msgRepo, userRepo, producer)
 	presenceSvc := service.NewPresenceService(producer, h)
+	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, nil)
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)

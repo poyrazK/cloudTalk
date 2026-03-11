@@ -96,6 +96,14 @@ type fakeMessageRepo struct {
 	dmByID           *model.DirectMessage
 }
 
+type fakePresenceReader struct {
+	online map[uuid.UUID]bool
+}
+
+func (f *fakePresenceReader) IsOnline(userID uuid.UUID) bool {
+	return f.online[userID]
+}
+
 func (f *fakeMessageRepo) SaveDM(_ context.Context, m *model.DirectMessage) error {
 	if f.saveErr != nil {
 		return f.saveErr
@@ -454,7 +462,8 @@ func TestMessageServiceDMConversations(t *testing.T) {
 		unreadCountsResp: []*model.DMUnreadCount{{UserID: partnerID, Count: 4}},
 	}
 	ur := &fakeMessageUserRepo{users: map[uuid.UUID]*model.User{partnerID: {ID: partnerID, Username: "alice"}}}
-	svc := NewMessageService(&fakeMessageRoomRepo{}, mr, ur, &fakePublisher{})
+	pr := &fakePresenceReader{online: map[uuid.UUID]bool{partnerID: true}}
+	svc := NewMessageServiceWithPresence(&fakeMessageRoomRepo{}, mr, ur, &fakePublisher{}, pr)
 
 	convs, err := svc.DMConversations(context.Background(), uuid.New(), 50)
 	if err != nil {
@@ -463,7 +472,7 @@ func TestMessageServiceDMConversations(t *testing.T) {
 	if len(convs) != 1 {
 		t.Fatalf("expected 1 conversation, got %d", len(convs))
 	}
-	if convs[0].Username != "alice" || convs[0].UnreadCount != 4 {
+	if convs[0].Username != "alice" || convs[0].UnreadCount != 4 || !convs[0].Online {
 		t.Fatalf("unexpected conversation projection: %+v", convs[0])
 	}
 }
