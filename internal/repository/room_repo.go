@@ -192,6 +192,38 @@ func (r *RoomRepo) ListRoomConversationHeads(ctx context.Context, userID uuid.UU
 	return heads, nil
 }
 
+func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
+	membersByRoomID := make(map[uuid.UUID][]uuid.UUID, len(roomIDs))
+	if len(roomIDs) == 0 {
+		return membersByRoomID, nil
+	}
+
+	rows, err := r.db.Query(ctx,
+		`SELECT room_id, user_id
+		 FROM room_members
+		 WHERE room_id = ANY($1)`,
+		roomIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list room members: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var roomID uuid.UUID
+		var userID uuid.UUID
+		if err := rows.Scan(&roomID, &userID); err != nil {
+			return nil, fmt.Errorf("scan room member row: %w", err)
+		}
+		membersByRoomID[roomID] = append(membersByRoomID[roomID], userID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room member rows: %w", err)
+	}
+
+	return membersByRoomID, nil
+}
+
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID,
