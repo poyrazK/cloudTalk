@@ -44,6 +44,6 @@ In Kubernetes, `KAFKA_GROUP_ID` is set to the pod name via the Downward API, gua
 
 | Topic                | Action |
 |----------------------|--------|
-| `chat.room.messages` | `hub.BroadcastRoom(roomID, event)` — delivers to all local clients joined to that room |
+| `chat.room.messages` | `typing` goes to subscribed room members except sender; other room events go to all subscribed room clients |
 | `chat.dm.messages`   | `typing_dm` goes to receiver only; other DM events are echoed to both sides |
 | `chat.presence`      | Handled by `PresenceService` |

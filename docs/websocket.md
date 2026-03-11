@@ -86,6 +86,12 @@ Broadcast a typing indicator to all members of a room.
 { "type": "typing", "room_id": "<uuid>", "typing": true }
 ```
 
+Behavior:
+
+- sender must be a room member
+- delivered to other subscribed room members
+- not echoed back to sender
+
 ### typing_dm
 Send a DM typing indicator to a specific user.
 ```json

@@ -36,6 +36,7 @@ Notes:
 Typing indicators are ephemeral realtime signals and are not persisted.
 
 - Room typing uses WebSocket action `typing`.
+- Room typing requires membership and is not echoed to sender.
 - DM typing uses WebSocket action `typing_dm`.
 - DM typing is recipient-only and not echoed to sender.
 - Typing signals do not affect unread counts or delivery/read receipts.
