@@ -246,6 +246,7 @@ Returns the DM conversation list for the authenticated user.
 Each item includes:
 
 - conversation partner user
+- partner online status snapshot (`online`)
 - latest message in that thread
 - unread count for inbound DMs from that partner
 
@@ -261,6 +262,7 @@ Each item includes:
   {
     "user_id": "<uuid>",
     "username": "alice",
+    "online": true,
     "unread_count": 3,
     "last_message": {
       "id": "<uuid>",

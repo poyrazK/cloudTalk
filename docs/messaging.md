@@ -109,6 +109,7 @@ Each conversation item contains:
 
 - `user_id`
 - `username`
+- `online`
 - `unread_count`
 - `last_message`
 
@@ -123,6 +124,7 @@ Query params:
 Conversation semantics:
 
 - `last_message` is the latest DM between current user and partner.
+- `online` is a snapshot of partner presence at request time.
 - `unread_count` counts inbound DMs where `read_at IS NULL`.
 - Soft-deleted messages can still appear as `last_message` with `deleted_at` set.
 
