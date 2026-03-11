@@ -212,7 +212,7 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 		h.handleDeleteDM(ctx, client, msg)
 
 	case "typing":
-		h.handleTyping(client, msg)
+		h.handleTyping(ctx, client, msg)
 
 	case "typing_dm":
 		h.handleDMTyping(client, msg)
@@ -396,11 +396,21 @@ func (h *WSHandler) handleDeleteDM(ctx context.Context, client *hub.Client, msg 
 	}
 }
 
-func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
+func (h *WSHandler) handleTyping(ctx context.Context, client *hub.Client, msg incomingMsg) {
 	roomID, err := uuid.Parse(msg.RoomID)
 	if err != nil {
 		return
 	}
+	isMember, err := h.rooms.IsMember(ctx, roomID, client.UserID)
+	if err != nil {
+		slog.Error("ws: check room member for typing", "err", err)
+		return
+	}
+	if !isMember {
+		slog.Warn("ws: typing forbidden for non-member", "user_id", client.UserID, "room_id", roomID)
+		return
+	}
+
 	payload, err := json.Marshal(map[string]interface{}{
 		"user_id": client.UserID.String(),
 		"room_id": roomID.String(),
@@ -416,7 +426,7 @@ func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
 			slog.Error("ws: marshal local typing event", "err", err)
 			return
 		}
-		h.hub.BroadcastRoom(roomID, hub.Event{Data: out})
+		h.hub.BroadcastRoomExcept(roomID, client.UserID, hub.Event{Data: out})
 		return
 	}
 
