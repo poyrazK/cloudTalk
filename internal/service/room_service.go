@@ -11,7 +11,8 @@ import (
 )
 
 type RoomService struct {
-	rooms roomRepository
+	rooms    roomRepository
+	presence roomPresenceReader
 }
 
 type roomRepository interface {
@@ -23,12 +24,21 @@ type roomRepository interface {
 	MarkRoomRead(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
 	ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error)
 	ListRoomConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversationHead, error)
+	ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 	RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 }
 
+type roomPresenceReader interface {
+	IsOnline(userID uuid.UUID) bool
+}
+
 func NewRoomService(rooms roomRepository) *RoomService {
-	return &RoomService{rooms: rooms}
+	return NewRoomServiceWithPresence(rooms, nil)
+}
+
+func NewRoomServiceWithPresence(rooms roomRepository, presence roomPresenceReader) *RoomService {
+	return &RoomService{rooms: rooms, presence: presence}
 }
 
 func (s *RoomService) Create(ctx context.Context, name, description string, createdBy uuid.UUID) (*model.Room, error) {
@@ -127,13 +137,31 @@ func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit
 	for _, c := range counts {
 		countByRoomID[c.RoomID] = c.Count
 	}
+	roomIDs := make([]uuid.UUID, 0, len(heads))
+	for _, head := range heads {
+		roomIDs = append(roomIDs, head.RoomID)
+	}
+
+	membersByRoomID, err := s.rooms.ListRoomMemberIDs(ctx, roomIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list room members for conversations: %w", err)
+	}
 
 	conversations := make([]*model.RoomConversation, 0, len(heads))
 	for _, head := range heads {
+		onlineCount := 0
+		if s.presence != nil {
+			for _, memberID := range membersByRoomID[head.RoomID] {
+				if s.presence.IsOnline(memberID) {
+					onlineCount++
+				}
+			}
+		}
 		conversations = append(conversations, &model.RoomConversation{
 			RoomID:      head.RoomID,
 			Name:        head.Name,
 			Description: head.Description,
+			OnlineCount: onlineCount,
 			UnreadCount: countByRoomID[head.RoomID],
 			LastMessage: head.LastMessage,
 		})

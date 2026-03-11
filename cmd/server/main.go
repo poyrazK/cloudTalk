@@ -73,8 +73,8 @@ func run() error {
 	h := hub.New()
 
 	// --- Services ---
-	roomSvc := service.NewRoomService(roomRepo)
 	presenceSvc := service.NewPresenceService(producer, h)
+	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 
 	// --- Kafka consumer fan-out ---

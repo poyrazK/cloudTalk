@@ -26,6 +26,7 @@ type fakeRoomRepo struct {
 	initReadUserID   uuid.UUID
 	unreadResp       []*model.RoomUnreadCount
 	conversationResp []*model.RoomConversationHead
+	memberIDsByRoom  map[uuid.UUID][]uuid.UUID
 	removedRoomID    uuid.UUID
 	removedUserID    uuid.UUID
 	listByUserResp   []*model.Room
@@ -83,6 +84,14 @@ func (f *fakeRoomRepo) ListRoomConversationHeads(_ context.Context, _ uuid.UUID,
 	return f.conversationResp, nil
 }
 
+func (f *fakeRoomRepo) ListRoomMemberIDs(_ context.Context, roomIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
+	out := make(map[uuid.UUID][]uuid.UUID, len(roomIDs))
+	for _, roomID := range roomIDs {
+		out[roomID] = append(out[roomID], f.memberIDsByRoom[roomID]...)
+	}
+	return out, nil
+}
+
 func (f *fakeRoomRepo) RemoveMember(_ context.Context, roomID, userID uuid.UUID) error {
 	if f.removeErr != nil {
 		return f.removeErr
@@ -97,6 +106,14 @@ func (f *fakeRoomRepo) IsMember(_ context.Context, _, _ uuid.UUID) (bool, error)
 		return false, f.isMemberErr
 	}
 	return f.isMember, nil
+}
+
+type fakeRoomPresenceReader struct {
+	online map[uuid.UUID]bool
+}
+
+func (f *fakeRoomPresenceReader) IsOnline(userID uuid.UUID) bool {
+	return f.online[userID]
 }
 
 func TestRoomServiceCreateAutoAddsCreator(t *testing.T) {
@@ -186,8 +203,13 @@ func TestRoomServiceConversationsComposeUnreadAndLastMessage(t *testing.T) {
 			{RoomID: roomBID, Name: "b", Description: "B room", LastMessage: nil},
 		},
 		unreadResp: []*model.RoomUnreadCount{{RoomID: roomAID, Count: 4}},
+		memberIDsByRoom: map[uuid.UUID][]uuid.UUID{
+			roomAID: {uuid.New(), uuid.New()},
+			roomBID: {uuid.New()},
+		},
 	}
-	svc := NewRoomService(repo)
+	pr := &fakeRoomPresenceReader{online: map[uuid.UUID]bool{repo.memberIDsByRoom[roomAID][0]: true}}
+	svc := NewRoomServiceWithPresence(repo, pr)
 
 	conversations, err := svc.Conversations(context.Background(), uuid.New(), 50)
 	if err != nil {
@@ -197,10 +219,10 @@ func TestRoomServiceConversationsComposeUnreadAndLastMessage(t *testing.T) {
 		t.Fatalf("expected 2 room conversations, got %d", len(conversations))
 	}
 
-	if conversations[0].RoomID != roomAID || conversations[0].UnreadCount != 4 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "latest-a" {
+	if conversations[0].RoomID != roomAID || conversations[0].UnreadCount != 4 || conversations[0].OnlineCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "latest-a" {
 		t.Fatalf("unexpected first conversation: %+v", conversations[0])
 	}
-	if conversations[1].RoomID != roomBID || conversations[1].UnreadCount != 0 || conversations[1].LastMessage != nil {
+	if conversations[1].RoomID != roomBID || conversations[1].UnreadCount != 0 || conversations[1].OnlineCount != 0 || conversations[1].LastMessage != nil {
 		t.Fatalf("unexpected second conversation: %+v", conversations[1])
 	}
 }
