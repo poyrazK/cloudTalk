@@ -411,10 +411,7 @@ func (h *WSHandler) handleTyping(client *hub.Client, msg incomingMsg) {
 		return
 	}
 	if h.producer == nil {
-		out, err := json.Marshal(map[string]interface{}{
-			"type":    "typing",
-			"payload": payload,
-		})
+		out, err := json.Marshal(outgoingMsg{Type: "typing", Payload: payload})
 		if err != nil {
 			slog.Error("ws: marshal local typing event", "err", err)
 			return
@@ -453,10 +450,7 @@ func (h *WSHandler) handleDMTyping(client *hub.Client, msg incomingMsg) {
 		return
 	}
 	if h.producer == nil {
-		out, err := json.Marshal(map[string]interface{}{
-			"type":    "typing_dm",
-			"payload": payload,
-		})
+		out, err := json.Marshal(outgoingMsg{Type: "typing_dm", Payload: payload})
 		if err != nil {
 			slog.Error("ws: marshal local dm typing event", "err", err)
 			return
