@@ -248,6 +248,8 @@ func TestDMConversationsIntegration(t *testing.T) {
 		}
 	}
 
+	app.Presence.SetOnline(context.Background(), p1.UserID)
+
 	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/conversations?limit=50", owner.AccessToken, nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("conversations status: got=%d", resp.StatusCode)
@@ -262,11 +264,11 @@ func TestDMConversationsIntegration(t *testing.T) {
 		got[c.UserID] = c
 	}
 	convP1, ok := got[p1.UserID]
-	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" {
+	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" || !convP1.Online {
 		t.Fatalf("unexpected p1 conversation: %+v", convP1)
 	}
 	convP2, ok := got[p2.UserID]
-	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" {
+	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" || convP2.Online {
 		t.Fatalf("unexpected p2 conversation: %+v", convP2)
 	}
 }
