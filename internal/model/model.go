@@ -44,6 +44,7 @@ type RoomConversation struct {
 	RoomID      uuid.UUID `json:"room_id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
+	MemberCount int       `json:"member_count"`
 	OnlineCount int       `json:"online_count"`
 	UnreadCount int       `json:"unread_count"`
 	LastMessage *Message  `json:"last_message"`

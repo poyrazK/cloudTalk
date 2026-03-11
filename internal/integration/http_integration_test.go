@@ -392,13 +392,13 @@ func TestRoomConversationsIntegration(t *testing.T) {
 		t.Fatalf("expected 3 room conversations, got %d", len(conversations))
 	}
 
-	if conversations[0].RoomID != roomA.ID || conversations[0].UnreadCount != 1 || conversations[0].OnlineCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "a-latest" {
+	if conversations[0].RoomID != roomA.ID || conversations[0].MemberCount != 2 || conversations[0].UnreadCount != 1 || conversations[0].OnlineCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "a-latest" {
 		t.Fatalf("unexpected first room conversation: %+v", conversations[0])
 	}
-	if conversations[1].RoomID != roomB.ID || conversations[1].UnreadCount != 1 || conversations[1].OnlineCount != 1 || conversations[1].LastMessage == nil || conversations[1].LastMessage.Content != "b-latest-deleted" || conversations[1].LastMessage.DeletedAt == nil {
+	if conversations[1].RoomID != roomB.ID || conversations[1].MemberCount != 2 || conversations[1].UnreadCount != 1 || conversations[1].OnlineCount != 1 || conversations[1].LastMessage == nil || conversations[1].LastMessage.Content != "b-latest-deleted" || conversations[1].LastMessage.DeletedAt == nil {
 		t.Fatalf("unexpected second room conversation: %+v", conversations[1])
 	}
-	if conversations[2].RoomID != roomC.ID || conversations[2].UnreadCount != 0 || conversations[2].OnlineCount != 1 || conversations[2].LastMessage != nil {
+	if conversations[2].RoomID != roomC.ID || conversations[2].MemberCount != 2 || conversations[2].UnreadCount != 0 || conversations[2].OnlineCount != 1 || conversations[2].LastMessage != nil {
 		t.Fatalf("unexpected third room conversation: %+v", conversations[2])
 	}
 }

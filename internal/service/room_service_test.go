@@ -219,10 +219,10 @@ func TestRoomServiceConversationsComposeUnreadAndLastMessage(t *testing.T) {
 		t.Fatalf("expected 2 room conversations, got %d", len(conversations))
 	}
 
-	if conversations[0].RoomID != roomAID || conversations[0].UnreadCount != 4 || conversations[0].OnlineCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "latest-a" {
+	if conversations[0].RoomID != roomAID || conversations[0].MemberCount != 2 || conversations[0].UnreadCount != 4 || conversations[0].OnlineCount != 1 || conversations[0].LastMessage == nil || conversations[0].LastMessage.Content != "latest-a" {
 		t.Fatalf("unexpected first conversation: %+v", conversations[0])
 	}
-	if conversations[1].RoomID != roomBID || conversations[1].UnreadCount != 0 || conversations[1].OnlineCount != 0 || conversations[1].LastMessage != nil {
+	if conversations[1].RoomID != roomBID || conversations[1].MemberCount != 1 || conversations[1].UnreadCount != 0 || conversations[1].OnlineCount != 0 || conversations[1].LastMessage != nil {
 		t.Fatalf("unexpected second conversation: %+v", conversations[1])
 	}
 }
