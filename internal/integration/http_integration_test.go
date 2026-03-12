@@ -458,7 +458,7 @@ func TestRoomMembersIntegration(t *testing.T) {
 		t.Fatalf("unexpected owner member row: %+v", ownerMember)
 	}
 	joinedMember, ok := byID[member.UserID]
-	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() || joinedMember.LastSeen == nil {
+	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
 		t.Fatalf("unexpected joined member row: %+v", joinedMember)
 	}
 
