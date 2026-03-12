@@ -237,9 +237,10 @@ func TestRoomServiceMembersComposeOnlineSnapshot(t *testing.T) {
 
 	memberA := uuid.New()
 	memberB := uuid.New()
+	offlineSeen := time.Now().UTC().Add(-5 * time.Minute)
 	repo := &fakeRoomRepo{listMembersResp: []*model.RoomMemberDetail{
-		{UserID: memberA, Username: "a", JoinedAt: time.Now().UTC().Add(-2 * time.Minute)},
-		{UserID: memberB, Username: "b", JoinedAt: time.Now().UTC().Add(-1 * time.Minute)},
+		{UserID: memberA, Username: "a", JoinedAt: time.Now().UTC().Add(-2 * time.Minute), LastSeen: &offlineSeen},
+		{UserID: memberB, Username: "b", JoinedAt: time.Now().UTC().Add(-1 * time.Minute), LastSeen: &offlineSeen},
 	}}
 	pr := &fakeRoomPresenceReader{online: map[uuid.UUID]bool{memberA: true}}
 	svc := NewRoomServiceWithPresence(repo, pr)
@@ -251,10 +252,10 @@ func TestRoomServiceMembersComposeOnlineSnapshot(t *testing.T) {
 	if len(members) != 2 {
 		t.Fatalf("expected 2 members, got %d", len(members))
 	}
-	if members[0].UserID != memberA || !members[0].Online {
+	if members[0].UserID != memberA || !members[0].Online || members[0].LastSeen != nil {
 		t.Fatalf("unexpected first member projection: %+v", members[0])
 	}
-	if members[1].UserID != memberB || members[1].Online {
+	if members[1].UserID != memberB || members[1].Online || members[1].LastSeen == nil {
 		t.Fatalf("unexpected second member projection: %+v", members[1])
 	}
 }

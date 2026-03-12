@@ -249,6 +249,8 @@ func TestDMConversationsIntegration(t *testing.T) {
 	}
 
 	app.Presence.SetOnline(context.Background(), p1.UserID)
+	app.Presence.SetOnline(context.Background(), p2.UserID)
+	app.Presence.SetOffline(context.Background(), p2.UserID)
 
 	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/conversations?limit=50", owner.AccessToken, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -264,11 +266,11 @@ func TestDMConversationsIntegration(t *testing.T) {
 		got[c.UserID] = c
 	}
 	convP1, ok := got[p1.UserID]
-	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" || !convP1.Online {
+	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" || !convP1.Online || convP1.LastSeen != nil {
 		t.Fatalf("unexpected p1 conversation: %+v", convP1)
 	}
 	convP2, ok := got[p2.UserID]
-	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" || convP2.Online {
+	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" || convP2.Online || convP2.LastSeen == nil {
 		t.Fatalf("unexpected p2 conversation: %+v", convP2)
 	}
 }
@@ -359,6 +361,8 @@ func TestRoomConversationsIntegration(t *testing.T) {
 	roomB := createRoom("room-conv-b")
 	roomC := createRoom("room-conv-c")
 	app.Presence.SetOnline(ctx, owner.UserID)
+	app.Presence.SetOnline(ctx, member.UserID)
+	app.Presence.SetOffline(ctx, member.UserID)
 
 	for _, room := range []model.Room{roomA, roomB, roomC} {
 		joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
@@ -447,11 +451,11 @@ func TestRoomMembersIntegration(t *testing.T) {
 		byID[m.UserID] = m
 	}
 	ownerMember, ok := byID[owner.UserID]
-	if !ok || ownerMember.Username != "room-members-owner" || !ownerMember.Online || ownerMember.JoinedAt.IsZero() {
+	if !ok || ownerMember.Username != "room-members-owner" || !ownerMember.Online || ownerMember.JoinedAt.IsZero() || ownerMember.LastSeen != nil {
 		t.Fatalf("unexpected owner member row: %+v", ownerMember)
 	}
 	joinedMember, ok := byID[member.UserID]
-	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
+	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() || joinedMember.LastSeen == nil {
 		t.Fatalf("unexpected joined member row: %+v", joinedMember)
 	}
 
