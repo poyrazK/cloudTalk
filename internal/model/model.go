@@ -33,7 +33,7 @@ type RoomMemberDetail struct {
 	UserID   uuid.UUID  `db:"user_id"   json:"user_id"`
 	Username string     `db:"username"  json:"username"`
 	JoinedAt time.Time  `db:"joined_at" json:"joined_at"`
-	LastSeen *time.Time `db:"last_seen_at" json:"last_seen,omitempty"`
+	LastSeen *time.Time `db:"last_seen_at" json:"last_seen"`
 	Online   bool       `json:"online"`
 }
 
@@ -95,7 +95,7 @@ type DMConversation struct {
 	UserID      uuid.UUID      `json:"user_id"`
 	Username    string         `json:"username"`
 	Online      bool           `json:"online"`
-	LastSeen    *time.Time     `json:"last_seen,omitempty"`
+	LastSeen    *time.Time     `json:"last_seen"`
 	UnreadCount int            `json:"unread_count"`
 	LastMessage *DirectMessage `json:"last_message"`
 }

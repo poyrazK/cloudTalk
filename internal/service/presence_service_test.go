@@ -19,11 +19,13 @@ type fakePresenceHub struct {
 type fakePresenceUserRepo struct {
 	updatedUserID uuid.UUID
 	updatedAt     bool
+	updates       int
 }
 
 func (f *fakePresenceUserRepo) UpdateLastSeen(_ context.Context, userID uuid.UUID, _ time.Time) error {
 	f.updatedUserID = userID
 	f.updatedAt = true
+	f.updates++
 	return nil
 }
 
@@ -55,6 +57,11 @@ func TestPresenceServiceOnlineOfflineAndPublish(t *testing.T) {
 	}
 	if !users.updatedAt || users.updatedUserID != uid {
 		t.Fatal("expected user last_seen update on offline")
+	}
+
+	svc.SetOffline(context.Background(), uid)
+	if users.updates != 1 {
+		t.Fatalf("expected no extra last_seen update while already offline, got %d", users.updates)
 	}
 }
 

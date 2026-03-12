@@ -485,4 +485,7 @@ func TestMessageServiceDMConversations(t *testing.T) {
 	if len(convs) != 1 || convs[0].Online || convs[0].LastSeen == nil {
 		t.Fatalf("expected offline last_seen projection, got %+v", convs[0])
 	}
+	if !convs[0].LastSeen.Equal(offlineSeen) {
+		t.Fatalf("expected offline last_seen %v, got %v", offlineSeen, convs[0].LastSeen)
+	}
 }

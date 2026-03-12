@@ -88,7 +88,12 @@ func (r *UserRepo) DeleteExpiredRefreshTokens(ctx context.Context) error {
 }
 
 func (r *UserRepo) UpdateLastSeen(ctx context.Context, userID uuid.UUID, at time.Time) error {
-	_, err := r.db.Exec(ctx, `UPDATE users SET last_seen_at = $2 WHERE id = $1`, userID, at)
+	_, err := r.db.Exec(ctx,
+		`UPDATE users
+		 SET last_seen_at = GREATEST(COALESCE(last_seen_at, $2), $2)
+		 WHERE id = $1`,
+		userID, at,
+	)
 	if err != nil {
 		return fmt.Errorf("update user last seen: %w", err)
 	}

@@ -50,12 +50,21 @@ func (s *PresenceService) SetOnline(_ context.Context, userID uuid.UUID) {
 	s.publishPresence(userID, "online")
 }
 
-func (s *PresenceService) SetOffline(ctx context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
 	s.mu.Lock()
-	delete(s.online, userID)
+	_, wasOnline := s.online[userID]
+	if wasOnline {
+		delete(s.online, userID)
+	}
 	s.mu.Unlock()
+	if !wasOnline {
+		return
+	}
+
 	if s.users != nil {
-		if err := s.users.UpdateLastSeen(ctx, userID, time.Now().UTC()); err != nil {
+		writeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := s.users.UpdateLastSeen(writeCtx, userID, time.Now().UTC()); err != nil {
 			slog.Error("update last seen", "err", err, "user_id", userID)
 		}
 	}
