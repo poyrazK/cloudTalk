@@ -62,10 +62,9 @@ func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
 	}
 
 	if s.users != nil {
-		//nolint:contextcheck // detached write should survive request-context cancellation on disconnect.
 		writeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := s.users.UpdateLastSeen(writeCtx, userID, time.Now().UTC()); err != nil {
+		if err := s.users.UpdateLastSeen(writeCtx, userID, time.Now().UTC()); err != nil { //nolint:contextcheck // detached write should survive request-context cancellation on disconnect.
 			slog.Error("update last seen", "err", err, "user_id", userID)
 		}
 	}
