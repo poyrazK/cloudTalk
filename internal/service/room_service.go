@@ -180,6 +180,9 @@ func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.R
 	}
 	for _, member := range members {
 		member.Online = s.presence != nil && s.presence.IsOnline(member.UserID)
+		if member.Online {
+			member.LastSeen = nil
+		}
 	}
 	return members, nil
 }

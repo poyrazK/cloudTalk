@@ -226,7 +226,7 @@ func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (
 
 func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT rm.user_id, u.username, rm.joined_at
+		`SELECT rm.user_id, u.username, rm.joined_at, u.last_seen_at
 		 FROM room_members rm
 		 JOIN users u ON u.id = rm.user_id
 		 WHERE rm.room_id = $1
@@ -241,7 +241,7 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 	var members []*model.RoomMemberDetail
 	for rows.Next() {
 		member := &model.RoomMemberDetail{}
-		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt); err != nil {
+		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt, &member.LastSeen); err != nil {
 			return nil, fmt.Errorf("scan room member detail row: %w", err)
 		}
 		members = append(members, member)
