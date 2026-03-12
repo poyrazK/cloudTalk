@@ -140,10 +140,16 @@ Only room members can access this endpoint. Non-members receive `403`.
     "user_id": "<uuid>",
     "username": "alice",
     "joined_at": "...",
+    "last_seen": null,
     "online": true
   }
 ]
 ```
+
+Presence semantics:
+
+- `online=true` implies `last_seen=null`
+- `online=false` may include the latest persisted `last_seen`
 
 ---
 
@@ -270,6 +276,7 @@ Each item includes:
 
 - conversation partner user
 - partner online status snapshot (`online`)
+- partner last seen snapshot (`last_seen`)
 - latest message in that thread
 - unread count for inbound DMs from that partner
 
@@ -286,6 +293,7 @@ Each item includes:
     "user_id": "<uuid>",
     "username": "alice",
     "online": true,
+    "last_seen": null,
     "unread_count": 3,
     "last_message": {
       "id": "<uuid>",
@@ -301,6 +309,11 @@ Each item includes:
   }
 ]
 ```
+
+Presence semantics:
+
+- `online=true` implies `last_seen=null`
+- `online=false` may include the latest persisted `last_seen`
 
 ---
 

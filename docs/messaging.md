@@ -118,8 +118,10 @@ API:
 Member semantics:
 
 - endpoint is accessible only to current room members
-- each row includes `user_id`, `username`, `joined_at`, and `online`
+- each row includes `user_id`, `username`, `joined_at`, `online`, and `last_seen`
 - `online` is a presence snapshot at request time
+- `online=true` implies `last_seen=null`
+- `online=false` may include the latest persisted `last_seen`
 
 ## Conversation list (DM)
 
@@ -130,6 +132,7 @@ Each conversation item contains:
 - `user_id`
 - `username`
 - `online`
+- `last_seen`
 - `unread_count`
 - `last_message`
 
@@ -145,6 +148,8 @@ Conversation semantics:
 
 - `last_message` is the latest DM between current user and partner.
 - `online` is a snapshot of partner presence at request time.
+- `online=true` implies `last_seen=null`.
+- `online=false` may include the latest persisted `last_seen`.
 - `unread_count` counts inbound DMs where `read_at IS NULL`.
 - Soft-deleted messages can still appear as `last_message` with `deleted_at` set.
 
