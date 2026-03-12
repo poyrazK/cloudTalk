@@ -27,6 +27,7 @@ type fakeRoomRepo struct {
 	unreadResp       []*model.RoomUnreadCount
 	conversationResp []*model.RoomConversationHead
 	memberIDsByRoom  map[uuid.UUID][]uuid.UUID
+	listMembersResp  []*model.RoomMemberDetail
 	removedRoomID    uuid.UUID
 	removedUserID    uuid.UUID
 	listByUserResp   []*model.Room
@@ -90,6 +91,10 @@ func (f *fakeRoomRepo) ListRoomMemberIDs(_ context.Context, roomIDs []uuid.UUID)
 		out[roomID] = append(out[roomID], f.memberIDsByRoom[roomID]...)
 	}
 	return out, nil
+}
+
+func (f *fakeRoomRepo) ListRoomMembers(_ context.Context, _ uuid.UUID) ([]*model.RoomMemberDetail, error) {
+	return f.listMembersResp, nil
 }
 
 func (f *fakeRoomRepo) RemoveMember(_ context.Context, roomID, userID uuid.UUID) error {
@@ -224,5 +229,32 @@ func TestRoomServiceConversationsComposeUnreadAndLastMessage(t *testing.T) {
 	}
 	if conversations[1].RoomID != roomBID || conversations[1].MemberCount != 1 || conversations[1].UnreadCount != 0 || conversations[1].OnlineCount != 0 || conversations[1].LastMessage != nil {
 		t.Fatalf("unexpected second conversation: %+v", conversations[1])
+	}
+}
+
+func TestRoomServiceMembersComposeOnlineSnapshot(t *testing.T) {
+	t.Parallel()
+
+	memberA := uuid.New()
+	memberB := uuid.New()
+	repo := &fakeRoomRepo{listMembersResp: []*model.RoomMemberDetail{
+		{UserID: memberA, Username: "a", JoinedAt: time.Now().UTC().Add(-2 * time.Minute)},
+		{UserID: memberB, Username: "b", JoinedAt: time.Now().UTC().Add(-1 * time.Minute)},
+	}}
+	pr := &fakeRoomPresenceReader{online: map[uuid.UUID]bool{memberA: true}}
+	svc := NewRoomServiceWithPresence(repo, pr)
+
+	members, err := svc.Members(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("room members failed: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+	if members[0].UserID != memberA || !members[0].Online {
+		t.Fatalf("unexpected first member projection: %+v", members[0])
+	}
+	if members[1].UserID != memberB || members[1].Online {
+		t.Fatalf("unexpected second member projection: %+v", members[1])
 	}
 }
