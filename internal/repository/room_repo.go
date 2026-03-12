@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/poyrazk/cloudtalk/internal/model"
 )
@@ -241,8 +242,13 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 	var members []*model.RoomMemberDetail
 	for rows.Next() {
 		member := &model.RoomMemberDetail{}
-		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt, &member.LastSeen); err != nil {
+		var lastSeen pgtype.Timestamptz
+		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt, &lastSeen); err != nil {
 			return nil, fmt.Errorf("scan room member detail row: %w", err)
+		}
+		if lastSeen.Valid {
+			t := lastSeen.Time
+			member.LastSeen = &t
 		}
 		members = append(members, member)
 	}
