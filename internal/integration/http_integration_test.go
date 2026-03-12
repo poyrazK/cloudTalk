@@ -225,7 +225,8 @@ func TestDMUnreadCountsIntegration(t *testing.T) {
 
 func TestDMConversationsIntegration(t *testing.T) {
 	env := itest.Start(t, itest.EnvOptions{})
-	if err := env.ResetDB(context.Background()); err != nil {
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
 		t.Fatalf("reset db: %v", err)
 	}
 	app := itest.BuildHTTPApp(env.Pool)
@@ -243,14 +244,15 @@ func TestDMConversationsIntegration(t *testing.T) {
 		{ID: uuid.New(), SenderID: p2.UserID, ReceiverID: owner.UserID, Content: "latest-p2", CreatedAt: now.Add(-2 * time.Minute)},
 	}
 	for _, dm := range dms {
-		if err := app.Messages.SaveDM(context.Background(), dm); err != nil {
+		if err := app.Messages.SaveDM(ctx, dm); err != nil {
 			t.Fatalf("save dm %s: %v", dm.ID, err)
 		}
 	}
 
-	app.Presence.SetOnline(context.Background(), p1.UserID)
-	app.Presence.SetOnline(context.Background(), p2.UserID)
-	app.Presence.SetOffline(context.Background(), p2.UserID)
+	app.Presence.SetOnline(ctx, p1.UserID)
+	if err := app.Users.UpdateLastSeen(ctx, p2.UserID, now.Add(-30*time.Second)); err != nil {
+		t.Fatalf("update p2 last seen: %v", err)
+	}
 
 	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/conversations?limit=50", owner.AccessToken, nil)
 	if resp.StatusCode != http.StatusOK {
@@ -361,8 +363,9 @@ func TestRoomConversationsIntegration(t *testing.T) {
 	roomB := createRoom("room-conv-b")
 	roomC := createRoom("room-conv-c")
 	app.Presence.SetOnline(ctx, owner.UserID)
-	app.Presence.SetOnline(ctx, member.UserID)
-	app.Presence.SetOffline(ctx, member.UserID)
+	if err := app.Users.UpdateLastSeen(ctx, member.UserID, time.Now().UTC().Add(-1*time.Minute)); err != nil {
+		t.Fatalf("update member last seen: %v", err)
+	}
 
 	for _, room := range []model.Room{roomA, roomB, roomC} {
 		joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
