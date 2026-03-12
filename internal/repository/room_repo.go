@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/poyrazk/cloudtalk/internal/model"
 )
@@ -226,7 +227,7 @@ func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (
 
 func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT rm.user_id, u.username, rm.joined_at
+		`SELECT rm.user_id, u.username, rm.joined_at, u.last_seen_at
 		 FROM room_members rm
 		 JOIN users u ON u.id = rm.user_id
 		 WHERE rm.room_id = $1
@@ -241,8 +242,13 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 	var members []*model.RoomMemberDetail
 	for rows.Next() {
 		member := &model.RoomMemberDetail{}
-		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt); err != nil {
+		var lastSeen pgtype.Timestamptz
+		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt, &lastSeen); err != nil {
 			return nil, fmt.Errorf("scan room member detail row: %w", err)
+		}
+		if lastSeen.Valid {
+			t := lastSeen.Time
+			member.LastSeen = &t
 		}
 		members = append(members, member)
 	}

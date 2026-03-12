@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/hub"
@@ -22,17 +23,23 @@ type PresenceService struct {
 	mu       sync.RWMutex
 	producer eventPublisher
 	hub      presenceHub
+	users    presenceUserRepository
 }
 
 type presenceHub interface {
 	BroadcastUser(userID uuid.UUID, evt hub.Event)
 }
 
-func NewPresenceService(p eventPublisher, h presenceHub) *PresenceService {
+type presenceUserRepository interface {
+	UpdateLastSeen(ctx context.Context, userID uuid.UUID, at time.Time) error
+}
+
+func NewPresenceService(p eventPublisher, h presenceHub, users presenceUserRepository) *PresenceService {
 	return &PresenceService{
 		online:   make(map[uuid.UUID]struct{}),
 		producer: p,
 		hub:      h,
+		users:    users,
 	}
 }
 
@@ -45,8 +52,22 @@ func (s *PresenceService) SetOnline(_ context.Context, userID uuid.UUID) {
 
 func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
 	s.mu.Lock()
-	delete(s.online, userID)
+	_, wasOnline := s.online[userID]
+	if wasOnline {
+		delete(s.online, userID)
+	}
 	s.mu.Unlock()
+	if !wasOnline {
+		return
+	}
+
+	if s.users != nil {
+		writeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := s.users.UpdateLastSeen(writeCtx, userID, time.Now().UTC()); err != nil { //nolint:contextcheck // detached write should survive request-context cancellation on disconnect.
+			slog.Error("update last seen", "err", err, "user_id", userID)
+		}
+	}
 	s.publishPresence(userID, "offline")
 }
 

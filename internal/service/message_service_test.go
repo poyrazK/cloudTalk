@@ -448,6 +448,7 @@ func TestMessageServiceDMConversations(t *testing.T) {
 
 	partnerID := uuid.New()
 	now := time.Now().UTC()
+	offlineSeen := now.Add(-10 * time.Minute)
 	mr := &fakeMessageRepo{
 		conversationResp: []*model.DMConversationHead{{
 			UserID: partnerID,
@@ -461,7 +462,7 @@ func TestMessageServiceDMConversations(t *testing.T) {
 		}},
 		unreadCountsResp: []*model.DMUnreadCount{{UserID: partnerID, Count: 4}},
 	}
-	ur := &fakeMessageUserRepo{users: map[uuid.UUID]*model.User{partnerID: {ID: partnerID, Username: "alice"}}}
+	ur := &fakeMessageUserRepo{users: map[uuid.UUID]*model.User{partnerID: {ID: partnerID, Username: "alice", LastSeenAt: &offlineSeen}}}
 	pr := &fakePresenceReader{online: map[uuid.UUID]bool{partnerID: true}}
 	svc := NewMessageServiceWithPresence(&fakeMessageRoomRepo{}, mr, ur, &fakePublisher{}, pr)
 
@@ -472,7 +473,19 @@ func TestMessageServiceDMConversations(t *testing.T) {
 	if len(convs) != 1 {
 		t.Fatalf("expected 1 conversation, got %d", len(convs))
 	}
-	if convs[0].Username != "alice" || convs[0].UnreadCount != 4 || !convs[0].Online {
+	if convs[0].Username != "alice" || convs[0].UnreadCount != 4 || !convs[0].Online || convs[0].LastSeen != nil {
 		t.Fatalf("unexpected conversation projection: %+v", convs[0])
+	}
+
+	pr.online[partnerID] = false
+	convs, err = svc.DMConversations(context.Background(), uuid.New(), 50)
+	if err != nil {
+		t.Fatalf("dm conversations failed: %v", err)
+	}
+	if len(convs) != 1 || convs[0].Online || convs[0].LastSeen == nil {
+		t.Fatalf("expected offline last_seen projection, got %+v", convs[0])
+	}
+	if !convs[0].LastSeen.Equal(offlineSeen) {
+		t.Fatalf("expected offline last_seen %v, got %v", offlineSeen, convs[0].LastSeen)
 	}
 }

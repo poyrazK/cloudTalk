@@ -7,11 +7,12 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID `db:"id"            json:"id"`
-	Username     string    `db:"username"      json:"username"`
-	Email        string    `db:"email"         json:"email"`
-	PasswordHash string    `db:"password_hash" json:"-"`
-	CreatedAt    time.Time `db:"created_at"    json:"created_at"`
+	ID           uuid.UUID  `db:"id"            json:"id"`
+	Username     string     `db:"username"      json:"username"`
+	Email        string     `db:"email"         json:"email"`
+	PasswordHash string     `db:"password_hash" json:"-"`
+	LastSeenAt   *time.Time `db:"last_seen_at"  json:"last_seen,omitempty"`
+	CreatedAt    time.Time  `db:"created_at"    json:"created_at"`
 }
 
 type Room struct {
@@ -29,10 +30,11 @@ type RoomMember struct {
 }
 
 type RoomMemberDetail struct {
-	UserID   uuid.UUID `db:"user_id"   json:"user_id"`
-	Username string    `db:"username"  json:"username"`
-	JoinedAt time.Time `db:"joined_at" json:"joined_at"`
-	Online   bool      `json:"online"`
+	UserID   uuid.UUID  `db:"user_id"   json:"user_id"`
+	Username string     `db:"username"  json:"username"`
+	JoinedAt time.Time  `db:"joined_at" json:"joined_at"`
+	LastSeen *time.Time `db:"last_seen_at" json:"last_seen"`
+	Online   bool       `json:"online"`
 }
 
 type RoomUnreadCount struct {
@@ -93,6 +95,7 @@ type DMConversation struct {
 	UserID      uuid.UUID      `json:"user_id"`
 	Username    string         `json:"username"`
 	Online      bool           `json:"online"`
+	LastSeen    *time.Time     `json:"last_seen"`
 	UnreadCount int            `json:"unread_count"`
 	LastMessage *DirectMessage `json:"last_message"`
 }

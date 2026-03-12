@@ -187,10 +187,16 @@ func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, 
 		if err != nil {
 			return nil, fmt.Errorf("load conversation user: %w", err)
 		}
+		online := s.presence != nil && s.presence.IsOnline(user.ID)
+		lastSeen := user.LastSeenAt
+		if online {
+			lastSeen = nil
+		}
 		convs = append(convs, &model.DMConversation{
 			UserID:      user.ID,
 			Username:    user.Username,
-			Online:      s.presence != nil && s.presence.IsOnline(user.ID),
+			Online:      online,
+			LastSeen:    lastSeen,
 			UnreadCount: countMap[user.ID],
 			LastMessage: head.LastMessage,
 		})

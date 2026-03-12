@@ -28,8 +28,8 @@ func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	u := &model.User{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, created_at FROM users WHERE id=$1`, id,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.CreatedAt)
+		`SELECT id, username, email, password_hash, last_seen_at, created_at FROM users WHERE id=$1`, id,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -39,8 +39,8 @@ func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, erro
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	u := &model.User{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, created_at FROM users WHERE email=$1`, email,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.CreatedAt)
+		`SELECT id, username, email, password_hash, last_seen_at, created_at FROM users WHERE email=$1`, email,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -83,6 +83,19 @@ func (r *UserRepo) DeleteExpiredRefreshTokens(ctx context.Context) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM refresh_tokens WHERE expires_at < $1`, time.Now())
 	if err != nil {
 		return fmt.Errorf("delete expired refresh tokens: %w", err)
+	}
+	return nil
+}
+
+func (r *UserRepo) UpdateLastSeen(ctx context.Context, userID uuid.UUID, at time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE users
+		 SET last_seen_at = GREATEST(COALESCE(last_seen_at, $2), $2)
+		 WHERE id = $1`,
+		userID, at,
+	)
+	if err != nil {
+		return fmt.Errorf("update user last seen: %w", err)
 	}
 	return nil
 }
