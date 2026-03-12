@@ -134,6 +134,32 @@ func (h *RoomHandler) Messages(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, http.StatusOK, msgs)
 }
 
+func (h *RoomHandler) Members(w http.ResponseWriter, r *http.Request) {
+	userID, _ := authsvc.UserIDFromContext(r.Context())
+	roomID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		jsonError(w, "invalid room id", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := h.rooms.IsMember(r.Context(), roomID, userID)
+	if err != nil {
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		jsonError(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	members, err := h.rooms.Members(r.Context(), roomID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, members)
+}
+
 func (h *RoomHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 	userID, _ := authsvc.UserIDFromContext(r.Context())
 	counts, err := h.rooms.UnreadCounts(r.Context(), userID)

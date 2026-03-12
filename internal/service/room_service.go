@@ -25,6 +25,7 @@ type roomRepository interface {
 	ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error)
 	ListRoomConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversationHead, error)
 	ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
+	ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error)
 	RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 }
@@ -170,4 +171,15 @@ func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit
 	}
 
 	return conversations, nil
+}
+
+func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
+	members, err := s.rooms.ListRoomMembers(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("list room members: %w", err)
+	}
+	for _, member := range members {
+		member.Online = s.presence != nil && s.presence.IsOnline(member.UserID)
+	}
+	return members, nil
 }

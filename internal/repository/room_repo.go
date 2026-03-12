@@ -224,6 +224,34 @@ func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (
 	return membersByRoomID, nil
 }
 
+func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT rm.user_id, u.username, rm.joined_at
+		 FROM room_members rm
+		 JOIN users u ON u.id = rm.user_id
+		 WHERE rm.room_id = $1
+		 ORDER BY rm.joined_at ASC, rm.user_id`,
+		roomID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list room members by room: %w", err)
+	}
+	defer rows.Close()
+
+	var members []*model.RoomMemberDetail
+	for rows.Next() {
+		member := &model.RoomMemberDetail{}
+		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt); err != nil {
+			return nil, fmt.Errorf("scan room member detail row: %w", err)
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate room member detail rows: %w", err)
+	}
+	return members, nil
+}
+
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`DELETE FROM room_members WHERE room_id=$1 AND user_id=$2`, roomID, userID,

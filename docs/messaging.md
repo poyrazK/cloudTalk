@@ -10,6 +10,7 @@ This document defines how core chat message behavior works in cloudTalk.
 - Unread counts for DMs
 - Unread counts for rooms
 - Conversation lists for DMs and rooms
+- Room member snapshots
 - Message edit and soft delete
 
 ## Message lifecycle
@@ -105,6 +106,20 @@ Conversation semantics:
 - `member_count` is a snapshot of current room membership at request time.
 - `online_count` is a snapshot of currently online room members at request time.
 - `unread_count` follows room unread rules from the previous section.
+
+## Room members
+
+Room members can be listed for a single room.
+
+API:
+
+- `GET /api/v1/rooms/:id/members`
+
+Member semantics:
+
+- endpoint is accessible only to current room members
+- each row includes `user_id`, `username`, `joined_at`, and `online`
+- `online` is a presence snapshot at request time
 
 ## Conversation list (DM)
 

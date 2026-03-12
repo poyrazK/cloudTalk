@@ -403,6 +403,64 @@ func TestRoomConversationsIntegration(t *testing.T) {
 	}
 }
 
+func TestRoomMembersIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "room-members-owner")
+	member := registerAndLogin(t, ts.URL, "room-members-member")
+	outsider := registerAndLogin(t, ts.URL, "room-members-outsider")
+
+	createResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", owner.AccessToken, map[string]string{
+		"name":        "room-members",
+		"description": "integration",
+	})
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createResp)
+
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
+	if joinResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
+	}
+
+	app.Presence.SetOnline(ctx, owner.UserID)
+
+	membersResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members", member.AccessToken, nil)
+	if membersResp.StatusCode != http.StatusOK {
+		t.Fatalf("room members status: got=%d", membersResp.StatusCode)
+	}
+	members := decodeJSON[[]model.RoomMemberDetail](t, membersResp)
+	if len(members) != 2 {
+		t.Fatalf("expected 2 room members, got %d", len(members))
+	}
+
+	byID := map[uuid.UUID]model.RoomMemberDetail{}
+	for _, m := range members {
+		byID[m.UserID] = m
+	}
+	ownerMember, ok := byID[owner.UserID]
+	if !ok || ownerMember.Username != "room-members-owner" || !ownerMember.Online || ownerMember.JoinedAt.IsZero() {
+		t.Fatalf("unexpected owner member row: %+v", ownerMember)
+	}
+	joinedMember, ok := byID[member.UserID]
+	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
+		t.Fatalf("unexpected joined member row: %+v", joinedMember)
+	}
+
+	forbiddenResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members", outsider.AccessToken, nil)
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("room members outsider status: got=%d", forbiddenResp.StatusCode)
+	}
+}
+
 type authUser struct {
 	UserID      uuid.UUID
 	AccessToken string

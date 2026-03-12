@@ -139,6 +139,7 @@ func run() error {
 			r.Get("/rooms/{id}", roomH.Get)
 			r.Post("/rooms/{id}/join", roomH.Join)
 			r.Post("/rooms/{id}/leave", roomH.Leave)
+			r.Get("/rooms/{id}/members", roomH.Members)
 			r.Get("/rooms/{id}/messages", roomH.Messages)
 
 			r.Get("/dms/{userId}/messages", dmH.Messages)

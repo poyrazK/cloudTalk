@@ -128,6 +128,25 @@ Only room members can access this endpoint. Non-members receive `403`.
 
 ---
 
+### GET /rooms/:id/members
+List members of a room.
+
+Only room members can access this endpoint. Non-members receive `403`.
+
+**Response** `200`
+```json
+[
+  {
+    "user_id": "<uuid>",
+    "username": "alice",
+    "joined_at": "...",
+    "online": true
+  }
+]
+```
+
+---
+
 ### GET /rooms/unread-counts
 Returns unread room message counts for the authenticated user, grouped by room.
 
