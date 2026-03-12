@@ -250,8 +250,8 @@ func TestDMConversationsIntegration(t *testing.T) {
 	}
 
 	app.Presence.SetOnline(ctx, p1.UserID)
-	if err := app.Users.UpdateLastSeen(ctx, p2.UserID, now.Add(-30*time.Second)); err != nil {
-		t.Fatalf("update p2 last seen: %v", err)
+	if _, err := env.Pool.Exec(ctx, `UPDATE users SET last_seen_at = $2 WHERE id = $1`, p2.UserID, now.Add(-30*time.Second)); err != nil {
+		t.Fatalf("sql update p2 last seen: %v", err)
 	}
 
 	resp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/dms/conversations?limit=50", owner.AccessToken, nil)
@@ -363,8 +363,8 @@ func TestRoomConversationsIntegration(t *testing.T) {
 	roomB := createRoom("room-conv-b")
 	roomC := createRoom("room-conv-c")
 	app.Presence.SetOnline(ctx, owner.UserID)
-	if err := app.Users.UpdateLastSeen(ctx, member.UserID, time.Now().UTC().Add(-1*time.Minute)); err != nil {
-		t.Fatalf("update member last seen: %v", err)
+	if _, err := env.Pool.Exec(ctx, `UPDATE users SET last_seen_at = $2 WHERE id = $1`, member.UserID, time.Now().UTC().Add(-1*time.Minute)); err != nil {
+		t.Fatalf("sql update member last seen: %v", err)
 	}
 
 	for _, room := range []model.Room{roomA, roomB, roomC} {
