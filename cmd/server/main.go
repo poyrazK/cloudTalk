@@ -73,7 +73,7 @@ func run() error {
 	h := hub.New()
 
 	// --- Services ---
-	presenceSvc := service.NewPresenceService(producer, h)
+	presenceSvc := service.NewPresenceService(producer, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 

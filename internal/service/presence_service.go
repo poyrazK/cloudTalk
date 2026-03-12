@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/hub"
@@ -22,17 +23,23 @@ type PresenceService struct {
 	mu       sync.RWMutex
 	producer eventPublisher
 	hub      presenceHub
+	users    presenceUserRepository
 }
 
 type presenceHub interface {
 	BroadcastUser(userID uuid.UUID, evt hub.Event)
 }
 
-func NewPresenceService(p eventPublisher, h presenceHub) *PresenceService {
+type presenceUserRepository interface {
+	UpdateLastSeen(ctx context.Context, userID uuid.UUID, at time.Time) error
+}
+
+func NewPresenceService(p eventPublisher, h presenceHub, users presenceUserRepository) *PresenceService {
 	return &PresenceService{
 		online:   make(map[uuid.UUID]struct{}),
 		producer: p,
 		hub:      h,
+		users:    users,
 	}
 }
 
@@ -43,10 +50,15 @@ func (s *PresenceService) SetOnline(_ context.Context, userID uuid.UUID) {
 	s.publishPresence(userID, "online")
 }
 
-func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOffline(ctx context.Context, userID uuid.UUID) {
 	s.mu.Lock()
 	delete(s.online, userID)
 	s.mu.Unlock()
+	if s.users != nil {
+		if err := s.users.UpdateLastSeen(ctx, userID, time.Now().UTC()); err != nil {
+			slog.Error("update last seen", "err", err, "user_id", userID)
+		}
+	}
 	s.publishPresence(userID, "offline")
 }
 

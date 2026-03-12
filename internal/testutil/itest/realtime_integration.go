@@ -51,7 +51,7 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 	h := hub.New()
 	publisher := loopbackPublisher{h: h}
 
-	presenceSvc := service.NewPresenceService(publisher, h)
+	presenceSvc := service.NewPresenceService(publisher, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, publisher, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, nil, nil)
@@ -121,7 +121,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 		return nil, fmt.Errorf("create kafka producer: %w", err)
 	}
 
-	presenceSvc := service.NewPresenceService(producer, h)
+	presenceSvc := service.NewPresenceService(producer, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, nil)

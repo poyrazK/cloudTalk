@@ -34,7 +34,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 
 	auth := authsvc.NewService(userRepo, "integration-secret", 15, 7)
 	h := hub.New()
-	presenceSvc := service.NewPresenceService(nilPublisher{}, h)
+	presenceSvc := service.NewPresenceService(nilPublisher{}, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, nilPublisher{}, presenceSvc)
 

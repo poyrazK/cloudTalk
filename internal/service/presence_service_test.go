@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/hub"
@@ -13,6 +14,17 @@ import (
 type fakePresenceHub struct {
 	userID uuid.UUID
 	event  hub.Event
+}
+
+type fakePresenceUserRepo struct {
+	updatedUserID uuid.UUID
+	updatedAt     bool
+}
+
+func (f *fakePresenceUserRepo) UpdateLastSeen(_ context.Context, userID uuid.UUID, _ time.Time) error {
+	f.updatedUserID = userID
+	f.updatedAt = true
+	return nil
 }
 
 func (f *fakePresenceHub) BroadcastUser(userID uuid.UUID, evt hub.Event) {
@@ -25,7 +37,8 @@ func TestPresenceServiceOnlineOfflineAndPublish(t *testing.T) {
 
 	pub := &fakePublisher{}
 	h := &fakePresenceHub{}
-	svc := NewPresenceService(pub, h)
+	users := &fakePresenceUserRepo{}
+	svc := NewPresenceService(pub, h, users)
 	uid := uuid.New()
 
 	svc.SetOnline(context.Background(), uid)
@@ -40,6 +53,9 @@ func TestPresenceServiceOnlineOfflineAndPublish(t *testing.T) {
 	if svc.IsOnline(uid) {
 		t.Fatal("expected user offline")
 	}
+	if !users.updatedAt || users.updatedUserID != uid {
+		t.Fatal("expected user last_seen update on offline")
+	}
 }
 
 func TestPresenceServiceHandleKafkaPresence(t *testing.T) {
@@ -47,7 +63,7 @@ func TestPresenceServiceHandleKafkaPresence(t *testing.T) {
 
 	pub := &fakePublisher{}
 	h := &fakePresenceHub{}
-	svc := NewPresenceService(pub, h)
+	svc := NewPresenceService(pub, h, nil)
 	uid := uuid.New()
 	payload := json.RawMessage(`{"user_id":"` + uid.String() + `","status":"online"}`)
 
