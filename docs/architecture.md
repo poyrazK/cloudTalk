@@ -44,3 +44,10 @@ All database access via pgx/v5. Cursor-based pagination for message history (use
 Orchestrates business logic: room membership checks before sending, saving to DB and publishing to Kafka atomically from the caller's perspective.
 
 For message-level behavior details (receipts, unread counts, edit/delete), see `docs/messaging.md`.
+
+## Observability
+
+- `/health` is a liveness endpoint for basic process availability.
+- `/ready` verifies runtime readiness, including database connectivity.
+- `/metrics` exposes Prometheus metrics for HTTP, WebSocket, Kafka, and DB pool activity.
+- HTTP requests carry request IDs and are logged with route pattern, status, and latency.
