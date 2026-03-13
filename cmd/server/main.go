@@ -21,8 +21,10 @@ import (
 	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
 	"github.com/poyrazk/cloudtalk/internal/logger"
+	"github.com/poyrazk/cloudtalk/internal/metrics"
 	"github.com/poyrazk/cloudtalk/internal/repository"
 	"github.com/poyrazk/cloudtalk/internal/service"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -108,6 +110,19 @@ func run() error {
 		consumer.Close()
 	}()
 
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			metrics.UpdateDBPoolStats(pool.Stat())
+			select {
+			case <-ticker.C:
+			case <-consumerCtx.Done():
+				return
+			}
+		}
+	}()
+
 	// --- Handlers ---
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
@@ -119,6 +134,7 @@ func run() error {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
+	r.Use(handler.Observability())
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
@@ -149,10 +165,27 @@ func run() error {
 	})
 
 	r.Get("/ws", wsH.ServeHTTP)
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("ok")); err != nil {
 			slog.Error("health write", "err", err)
+		}
+	})
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := pool.Ping(checkCtx); err != nil {
+			http.Error(w, "database not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if producer == nil {
+			http.Error(w, "producer not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("ready")); err != nil {
+			slog.Error("ready write", "err", err)
 		}
 	})
 

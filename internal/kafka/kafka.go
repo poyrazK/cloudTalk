@@ -46,9 +46,11 @@ func NewProducer(brokers []string) (*Producer, error) {
 
 // Publish sends a ChatEvent to the given topic using key as the partition key.
 func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
+	start := time.Now()
 	data, err := json.Marshal(evt)
 	if err != nil {
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
+		metrics.KafkaPublishDuration.WithLabelValues(topic, "error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("marshal chat event: %w", err)
 	}
 	msg := &sarama.ProducerMessage{
@@ -59,9 +61,11 @@ func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
 	_, _, err = p.producer.SendMessage(msg)
 	if err != nil {
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
+		metrics.KafkaPublishDuration.WithLabelValues(topic, "error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("send kafka message: %w", err)
 	}
 	metrics.KafkaPublishTotal.WithLabelValues(topic, "ok").Inc()
+	metrics.KafkaPublishDuration.WithLabelValues(topic, "ok").Observe(time.Since(start).Seconds())
 	return nil
 }
 
@@ -144,14 +148,17 @@ func (h *consumerGroupHandler) Setup(_ sarama.ConsumerGroupSession) error   { re
 func (h *consumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error { return nil }
 func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
+		start := time.Now()
 		var evt ChatEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
 			slog.Error("kafka: unmarshal error", "err", err)
+			metrics.KafkaConsumeDuration.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
 			session.MarkMessage(msg, "")
 			continue
 		}
 		h.handler(msg.Topic, evt)
 		metrics.KafkaConsumeTotal.WithLabelValues(msg.Topic).Inc()
+		metrics.KafkaConsumeDuration.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
 		session.MarkMessage(msg, "")
 	}
 	return nil

@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -12,19 +13,53 @@ var (
 		Help: "Number of currently active WebSocket connections.",
 	})
 
+	WSConnectionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_ws_connections_total",
+		Help: "Total WebSocket connection lifecycle events.",
+	}, []string{"event"}) // event: connect | disconnect
+
 	KafkaPublishTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cloudtalk_kafka_publish_total",
 		Help: "Total Kafka messages published.",
 	}, []string{"topic", "status"}) // status: ok | error
+
+	KafkaPublishDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "cloudtalk_kafka_publish_duration_seconds",
+		Help:    "Kafka publish latency.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"topic", "status"})
 
 	KafkaConsumeTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cloudtalk_kafka_consume_total",
 		Help: "Total Kafka messages consumed.",
 	}, []string{"topic"})
 
+	KafkaConsumeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "cloudtalk_kafka_consume_duration_seconds",
+		Help:    "Kafka consumer handler latency.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"topic"})
+
+	HTTPRequestTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_http_requests_total",
+		Help: "Total HTTP requests processed.",
+	}, []string{"method", "path", "status"})
+
 	HTTPRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "cloudtalk_http_request_duration_seconds",
 		Help:    "HTTP request latency.",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"method", "path", "status"})
+
+	DBPoolConnections = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cloudtalk_db_pool_connections",
+		Help: "Database pool connection counts.",
+	}, []string{"state"}) // state: total | idle | acquired | max
 )
+
+func UpdateDBPoolStats(stats *pgxpool.Stat) {
+	DBPoolConnections.WithLabelValues("total").Set(float64(stats.TotalConns()))
+	DBPoolConnections.WithLabelValues("idle").Set(float64(stats.IdleConns()))
+	DBPoolConnections.WithLabelValues("acquired").Set(float64(stats.AcquiredConns()))
+	DBPoolConnections.WithLabelValues("max").Set(float64(stats.MaxConns()))
+}
