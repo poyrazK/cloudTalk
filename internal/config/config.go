@@ -71,14 +71,14 @@ func (c *Config) Validate() error {
 
 func validateNumericEnvConfig() []string {
 	var issues []string
-	issues = append(issues, validateRawInt("PORT", 1, 65535)...)
+	issues = append(issues, validateRawPositiveInt("PORT", 65535)...)
 	issues = append(issues, validateRawInt32("DB_MAX_CONNS", 1, 1<<30-1)...)
 	issues = append(issues, validateRawInt32("DB_MIN_CONNS", 0, 1<<30-1)...)
-	issues = append(issues, validateRawInt("DB_MAX_CONN_LIFE_SECS", 1, 1<<30-1)...)
-	issues = append(issues, validateRawInt("DB_MAX_CONN_IDLE_SECS", 1, 1<<30-1)...)
-	issues = append(issues, validateRawInt("JWT_EXP_MINUTES", 1, 1<<30-1)...)
-	issues = append(issues, validateRawInt("REFRESH_EXP_DAYS", 1, 1<<30-1)...)
-	issues = append(issues, validateRawInt("AUTH_RATE_LIMIT_RPM", 1, 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("DB_MAX_CONN_LIFE_SECS", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("DB_MAX_CONN_IDLE_SECS", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("JWT_EXP_MINUTES", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("REFRESH_EXP_DAYS", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("AUTH_RATE_LIMIT_RPM", 1<<30-1)...)
 	return issues
 }
 
@@ -133,14 +133,14 @@ func (c *Config) validateProdConfig() []string {
 	return issues
 }
 
-func validateRawInt(key string, minValue, maxValue int) []string {
+func validateRawPositiveInt(key string, maxValue int) []string {
 	if v, ok := os.LookupEnv(key); ok {
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			return []string{key + " must be a valid integer"}
 		}
-		if n < minValue || n > maxValue {
-			return []string{fmt.Sprintf("%s must be between %d and %d", key, minValue, maxValue)}
+		if n < 1 || n > maxValue {
+			return []string{fmt.Sprintf("%s must be between %d and %d", key, 1, maxValue)}
 		}
 	}
 	return nil
