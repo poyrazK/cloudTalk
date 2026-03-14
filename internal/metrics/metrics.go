@@ -40,6 +40,21 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"topic"})
 
+	KafkaConsumerErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_kafka_consumer_errors_total",
+		Help: "Total Kafka consumer loop errors.",
+	}, []string{"topic"})
+
+	KafkaDecodeErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_kafka_decode_errors_total",
+		Help: "Total Kafka message decode errors.",
+	}, []string{"topic"})
+
+	KafkaTopicVerificationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_kafka_topic_verification_total",
+		Help: "Total Kafka topic verification attempts.",
+	}, []string{"status"}) // status: ok | error
+
 	HTTPRequestTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cloudtalk_http_requests_total",
 		Help: "Total HTTP requests processed.",

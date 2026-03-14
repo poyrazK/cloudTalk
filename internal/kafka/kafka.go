@@ -3,8 +3,11 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -16,6 +19,10 @@ const (
 	TopicDMMessages   = "chat.dm.messages"
 	TopicPresence     = "chat.presence"
 )
+
+func RequiredTopics() []string {
+	return []string{TopicRoomMessages, TopicDMMessages, TopicPresence}
+}
 
 // ChatEvent is the message envelope published to Kafka.
 type ChatEvent struct {
@@ -30,6 +37,12 @@ type ChatEvent struct {
 type Producer struct {
 	producer sarama.SyncProducer
 	client   sarama.Client
+}
+
+type metadataClient interface {
+	RefreshMetadata(topics ...string) error
+	Topics() ([]string, error)
+	Partitions(topic string) ([]int32, error)
 }
 
 func NewProducer(brokers []string) (*Producer, error) {
@@ -105,6 +118,63 @@ func (p *Producer) Ping(ctx context.Context) error {
 	}
 }
 
+func (p *Producer) VerifyTopics(ctx context.Context, topics []string) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- verifyTopics(p.client, topics)
+	}()
+
+	select {
+	case <-ctx.Done():
+		metrics.KafkaTopicVerificationTotal.WithLabelValues("error").Inc()
+		return fmt.Errorf("verify kafka topics: %w", ctx.Err())
+	case err := <-errCh:
+		if err != nil {
+			metrics.KafkaTopicVerificationTotal.WithLabelValues("error").Inc()
+			return fmt.Errorf("verify kafka topics: %w", err)
+		}
+		metrics.KafkaTopicVerificationTotal.WithLabelValues("ok").Inc()
+		return nil
+	}
+}
+
+func verifyTopics(client metadataClient, topics []string) error {
+	if len(topics) == 0 {
+		return nil
+	}
+	if err := client.RefreshMetadata(topics...); err != nil {
+		return fmt.Errorf("refresh metadata: %w", err)
+	}
+	existing, err := client.Topics()
+	if err != nil {
+		return fmt.Errorf("list topics: %w", err)
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, topic := range existing {
+		existingSet[topic] = struct{}{}
+	}
+
+	missing := make([]string, 0)
+	for _, topic := range topics {
+		if _, ok := existingSet[topic]; !ok {
+			missing = append(missing, topic)
+			continue
+		}
+		partitions, err := client.Partitions(topic)
+		if err != nil {
+			return fmt.Errorf("topic %s partitions: %w", topic, err)
+		}
+		if len(partitions) == 0 {
+			missing = append(missing, topic)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("missing required topics: %v", missing)
+	}
+	return nil
+}
+
 // --- Consumer ---
 
 // MessageHandler is called for each Kafka message.
@@ -115,6 +185,9 @@ type Consumer struct {
 	group   sarama.ConsumerGroup
 	topics  []string
 	handler MessageHandler
+
+	mu       sync.RWMutex
+	readyErr error
 }
 
 func NewConsumer(brokers []string, groupID string, topics []string, handler MessageHandler) (*Consumer, error) {
@@ -126,7 +199,9 @@ func NewConsumer(brokers []string, groupID string, topics []string, handler Mess
 	if err != nil {
 		return nil, fmt.Errorf("kafka consumer: %w", err)
 	}
-	return &Consumer{group: g, topics: topics, handler: handler}, nil
+	consumer := &Consumer{group: g, topics: topics, handler: handler}
+	consumer.setReadyError(errors.New("consumer has not completed an initial session yet"))
+	return consumer, nil
 }
 
 // Start begins consuming in a background goroutine. Cancel ctx to stop.
@@ -136,7 +211,11 @@ func (c *Consumer) Start(ctx context.Context) {
 		backoff := time.Second
 		const maxBackoff = 30 * time.Second
 		for {
-			if err := c.group.Consume(ctx, c.topics, &consumerGroupHandler{handler: c.handler}); err != nil {
+			if err := c.group.Consume(ctx, c.topics, &consumerGroupHandler{handler: c.handler, onSetup: func() { c.setReadyError(nil) }}); err != nil {
+				c.setReadyError(err)
+				for _, topic := range c.topics {
+					metrics.KafkaConsumerErrorsTotal.WithLabelValues(topic).Inc()
+				}
 				slog.Error("kafka consumer error", "err", err, "retry_in", backoff)
 				select {
 				case <-ctx.Done():
@@ -159,6 +238,18 @@ func (c *Consumer) Start(ctx context.Context) {
 	}()
 }
 
+func (c *Consumer) ReadyError() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.readyErr
+}
+
+func (c *Consumer) setReadyError(err error) {
+	c.mu.Lock()
+	c.readyErr = err
+	c.mu.Unlock()
+}
+
 // Close shuts down the consumer group.
 func (c *Consumer) Close() error {
 	if err := c.group.Close(); err != nil {
@@ -170,16 +261,23 @@ func (c *Consumer) Close() error {
 // consumerGroupHandler implements sarama.ConsumerGroupHandler.
 type consumerGroupHandler struct {
 	handler MessageHandler
+	onSetup func()
 }
 
-func (h *consumerGroupHandler) Setup(_ sarama.ConsumerGroupSession) error   { return nil }
+func (h *consumerGroupHandler) Setup(_ sarama.ConsumerGroupSession) error {
+	if h.onSetup != nil {
+		h.onSetup()
+	}
+	return nil
+}
 func (h *consumerGroupHandler) Cleanup(_ sarama.ConsumerGroupSession) error { return nil }
 func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
 		start := time.Now()
 		var evt ChatEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
-			slog.Error("kafka: unmarshal error", "err", err)
+			metrics.KafkaDecodeErrorsTotal.WithLabelValues(msg.Topic).Inc()
+			slog.Error("kafka: unmarshal error", "err", err, "topic", msg.Topic, "partition", msg.Partition, "offset", msg.Offset)
 			metrics.KafkaConsumeDuration.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
 			session.MarkMessage(msg, "")
 			continue
