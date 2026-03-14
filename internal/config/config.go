@@ -1,12 +1,21 @@
 package config
 
 import (
+	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 )
 
+const (
+	EnvDev  = "dev"
+	EnvProd = "prod"
+)
+
 type Config struct {
+	AppEnv         string
 	Port           string
 	DatabaseDSN    string
 	DBMaxConns     int32
@@ -24,13 +33,14 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
+		AppEnv:         getEnv("APP_ENV", EnvDev),
 		Port:           getEnv("PORT", "8080"),
 		DatabaseDSN:    getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
 		DBMaxConns:     getEnvInt32("DB_MAX_CONNS", 20),
 		DBMinConns:     getEnvInt32("DB_MIN_CONNS", 2),
 		DBMaxConnLife:  getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
 		DBMaxConnIdle:  getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
-		KafkaBrokers:   []string{getEnv("KAFKA_BROKERS", "localhost:9092")},
+		KafkaBrokers:   splitCSV(getEnv("KAFKA_BROKERS", "localhost:9092")),
 		KafkaGroupID:   getEnv("KAFKA_GROUP_ID", hostnameOrDefault("cloudtalk")),
 		JWTSecret:      getEnv("JWT_SECRET", "change-me-in-production"),
 		JWTExpMinutes:  getEnvInt("JWT_EXP_MINUTES", 15),
@@ -38,6 +48,125 @@ func Load() *Config {
 		AllowedOrigins: splitCSV(getEnv("ALLOWED_ORIGINS", "")),
 		RateLimit:      getEnvInt("AUTH_RATE_LIMIT_RPM", 20),
 	}
+}
+
+func (c *Config) Validate() error {
+	var issues []string
+
+	if c.AppEnv != EnvDev && c.AppEnv != EnvProd {
+		issues = append(issues, "APP_ENV must be one of: dev, prod")
+	}
+	issues = append(issues, validateRawInt("PORT", 1, 65535)...)
+	issues = append(issues, validateRawInt32("DB_MAX_CONNS", 1, 1<<30-1)...)
+	issues = append(issues, validateRawInt32("DB_MIN_CONNS", 0, 1<<30-1)...)
+	issues = append(issues, validateRawInt("DB_MAX_CONN_LIFE_SECS", 1, 1<<30-1)...)
+	issues = append(issues, validateRawInt("DB_MAX_CONN_IDLE_SECS", 1, 1<<30-1)...)
+	issues = append(issues, validateRawInt("JWT_EXP_MINUTES", 1, 1<<30-1)...)
+	issues = append(issues, validateRawInt("REFRESH_EXP_DAYS", 1, 1<<30-1)...)
+	issues = append(issues, validateRawInt("AUTH_RATE_LIMIT_RPM", 1, 1<<30-1)...)
+
+	if c.DatabaseDSN == "" {
+		issues = append(issues, "DATABASE_DSN must not be empty")
+	}
+	if len(c.KafkaBrokers) == 0 {
+		issues = append(issues, "KAFKA_BROKERS must not be empty")
+	}
+	if c.KafkaGroupID == "" {
+		issues = append(issues, "KAFKA_GROUP_ID must not be empty")
+	}
+	if c.JWTSecret == "" {
+		issues = append(issues, "JWT_SECRET must not be empty")
+	}
+	if c.JWTSecret == "change-me-in-production" {
+		issues = append(issues, "JWT_SECRET must not use the default placeholder value")
+	}
+	if c.DBMinConns > c.DBMaxConns {
+		issues = append(issues, "DB_MIN_CONNS must be less than or equal to DB_MAX_CONNS")
+	}
+
+	for _, origin := range c.AllowedOrigins {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			issues = append(issues, fmt.Sprintf("ALLOWED_ORIGINS contains invalid origin %q", origin))
+		}
+	}
+
+	if c.AppEnv == EnvProd {
+		if len(c.JWTSecret) < 32 {
+			issues = append(issues, "JWT_SECRET must be at least 32 characters in prod")
+		}
+		if len(c.AllowedOrigins) == 0 {
+			issues = append(issues, "ALLOWED_ORIGINS must not be empty in prod")
+		}
+		if looksLocalDatabaseDSN(c.DatabaseDSN) {
+			issues = append(issues, "DATABASE_DSN must not point to localhost in prod")
+		}
+		if allLocalBrokers(c.KafkaBrokers) {
+			issues = append(issues, "KAFKA_BROKERS must not be localhost-only in prod")
+		}
+	}
+
+	if len(issues) > 0 {
+		return fmt.Errorf("invalid config: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func validateRawInt(key string, min, max int) []string {
+	if v, ok := os.LookupEnv(key); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return []string{fmt.Sprintf("%s must be a valid integer", key)}
+		}
+		if n < min || n > max {
+			return []string{fmt.Sprintf("%s must be between %d and %d", key, min, max)}
+		}
+	}
+	return nil
+}
+
+func validateRawInt32(key string, min, max int32) []string {
+	if v, ok := os.LookupEnv(key); ok {
+		n, err := strconv.ParseInt(v, 10, 32)
+		if err != nil {
+			return []string{fmt.Sprintf("%s must be a valid integer", key)}
+		}
+		parsed := int32(n)
+		if parsed < min || parsed > max {
+			return []string{fmt.Sprintf("%s must be between %d and %d", key, min, max)}
+		}
+	}
+	return nil
+}
+
+func looksLocalDatabaseDSN(dsn string) bool {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	return isLocalHost(host)
+}
+
+func allLocalBrokers(brokers []string) bool {
+	if len(brokers) == 0 {
+		return false
+	}
+	for _, broker := range brokers {
+		host, _, err := net.SplitHostPort(broker)
+		if err != nil {
+			host = broker
+		}
+		if !isLocalHost(host) {
+			return false
+		}
+	}
+	return true
+}
+
+func isLocalHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func getEnv(key, fallback string) string {
