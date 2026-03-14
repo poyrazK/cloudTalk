@@ -13,6 +13,7 @@ import (
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
+	"github.com/poyrazk/cloudtalk/internal/metrics"
 	"github.com/poyrazk/cloudtalk/internal/service"
 )
 
@@ -100,12 +101,16 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	client := hub.NewClient(userID)
 	h.hub.Register(client)
+	metrics.ActiveWSConnections.Inc()
+	metrics.WSConnectionsTotal.WithLabelValues("connect").Inc()
 	h.presence.SetOnline(r.Context(), userID)
 
 	go h.writePump(r.Context(), conn, client)
 	h.readPump(r.Context(), conn, client)
 
 	h.hub.Unregister(client)
+	metrics.ActiveWSConnections.Dec()
+	metrics.WSConnectionsTotal.WithLabelValues("disconnect").Inc()
 	h.presence.SetOffline(r.Context(), userID)
 }
 

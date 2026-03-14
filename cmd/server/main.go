@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 	"github.com/poyrazk/cloudtalk/internal/config"
 	"github.com/poyrazk/cloudtalk/internal/db"
@@ -21,8 +22,10 @@ import (
 	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
 	"github.com/poyrazk/cloudtalk/internal/logger"
+	"github.com/poyrazk/cloudtalk/internal/metrics"
 	"github.com/poyrazk/cloudtalk/internal/repository"
 	"github.com/poyrazk/cloudtalk/internal/service"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -108,6 +111,8 @@ func run() error {
 		consumer.Close()
 	}()
 
+	startDBPoolMetrics(consumerCtx, pool)
+
 	// --- Handlers ---
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
@@ -119,6 +124,7 @@ func run() error {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
+	r.Use(handler.Observability())
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
@@ -149,12 +155,7 @@ func run() error {
 	})
 
 	r.Get("/ws", wsH.ServeHTTP)
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("ok")); err != nil {
-			slog.Error("health write", "err", err)
-		}
-	})
+	registerObservabilityRoutes(r, pool, producer)
 
 	// --- Server ---
 	srv := &http.Server{
@@ -185,6 +186,47 @@ func run() error {
 	}
 
 	return nil
+}
+
+func startDBPoolMetrics(ctx context.Context, pool *pgxpool.Pool) {
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			metrics.UpdateDBPoolStats(pool.Stat())
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func registerObservabilityRoutes(r chi.Router, pool *pgxpool.Pool, producer *kafka.Producer) {
+	r.Handle("/metrics", promhttp.Handler())
+	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("ok")); err != nil {
+			slog.Error("health write", "err", err)
+		}
+	})
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		checkCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := pool.Ping(checkCtx); err != nil {
+			http.Error(w, "database not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if err := producer.Ping(checkCtx); err != nil {
+			http.Error(w, "kafka not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("ready")); err != nil {
+			slog.Error("ready write", "err", err)
+		}
+	})
 }
 
 // fanOut routes a Kafka ChatEvent to the correct Hub broadcast method.
