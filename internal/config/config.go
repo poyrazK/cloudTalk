@@ -56,6 +56,21 @@ func (c *Config) Validate() error {
 	if c.AppEnv != EnvDev && c.AppEnv != EnvProd {
 		issues = append(issues, "APP_ENV must be one of: dev, prod")
 	}
+	issues = append(issues, validateNumericEnvConfig()...)
+	issues = append(issues, c.validateBaseConfig()...)
+	issues = append(issues, c.validateOrigins()...)
+	if c.AppEnv == EnvProd {
+		issues = append(issues, c.validateProdConfig()...)
+	}
+
+	if len(issues) > 0 {
+		return fmt.Errorf("invalid config: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func validateNumericEnvConfig() []string {
+	var issues []string
 	issues = append(issues, validateRawInt("PORT", 1, 65535)...)
 	issues = append(issues, validateRawInt32("DB_MAX_CONNS", 1, 1<<30-1)...)
 	issues = append(issues, validateRawInt32("DB_MIN_CONNS", 0, 1<<30-1)...)
@@ -64,7 +79,11 @@ func (c *Config) Validate() error {
 	issues = append(issues, validateRawInt("JWT_EXP_MINUTES", 1, 1<<30-1)...)
 	issues = append(issues, validateRawInt("REFRESH_EXP_DAYS", 1, 1<<30-1)...)
 	issues = append(issues, validateRawInt("AUTH_RATE_LIMIT_RPM", 1, 1<<30-1)...)
+	return issues
+}
 
+func (c *Config) validateBaseConfig() []string {
+	var issues []string
 	if c.DatabaseDSN == "" {
 		issues = append(issues, "DATABASE_DSN must not be empty")
 	}
@@ -83,57 +102,59 @@ func (c *Config) Validate() error {
 	if c.DBMinConns > c.DBMaxConns {
 		issues = append(issues, "DB_MIN_CONNS must be less than or equal to DB_MAX_CONNS")
 	}
+	return issues
+}
 
+func (c *Config) validateOrigins() []string {
+	issues := make([]string, 0, len(c.AllowedOrigins))
 	for _, origin := range c.AllowedOrigins {
 		parsed, err := url.Parse(origin)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			issues = append(issues, fmt.Sprintf("ALLOWED_ORIGINS contains invalid origin %q", origin))
 		}
 	}
-
-	if c.AppEnv == EnvProd {
-		if len(c.JWTSecret) < 32 {
-			issues = append(issues, "JWT_SECRET must be at least 32 characters in prod")
-		}
-		if len(c.AllowedOrigins) == 0 {
-			issues = append(issues, "ALLOWED_ORIGINS must not be empty in prod")
-		}
-		if looksLocalDatabaseDSN(c.DatabaseDSN) {
-			issues = append(issues, "DATABASE_DSN must not point to localhost in prod")
-		}
-		if allLocalBrokers(c.KafkaBrokers) {
-			issues = append(issues, "KAFKA_BROKERS must not be localhost-only in prod")
-		}
-	}
-
-	if len(issues) > 0 {
-		return fmt.Errorf("invalid config: %s", strings.Join(issues, "; "))
-	}
-	return nil
+	return issues
 }
 
-func validateRawInt(key string, min, max int) []string {
+func (c *Config) validateProdConfig() []string {
+	var issues []string
+	if len(c.JWTSecret) < 32 {
+		issues = append(issues, "JWT_SECRET must be at least 32 characters in prod")
+	}
+	if len(c.AllowedOrigins) == 0 {
+		issues = append(issues, "ALLOWED_ORIGINS must not be empty in prod")
+	}
+	if looksLocalDatabaseDSN(c.DatabaseDSN) {
+		issues = append(issues, "DATABASE_DSN must not point to localhost in prod")
+	}
+	if allLocalBrokers(c.KafkaBrokers) {
+		issues = append(issues, "KAFKA_BROKERS must not be localhost-only in prod")
+	}
+	return issues
+}
+
+func validateRawInt(key string, minValue, maxValue int) []string {
 	if v, ok := os.LookupEnv(key); ok {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return []string{fmt.Sprintf("%s must be a valid integer", key)}
+			return []string{key + " must be a valid integer"}
 		}
-		if n < min || n > max {
-			return []string{fmt.Sprintf("%s must be between %d and %d", key, min, max)}
+		if n < minValue || n > maxValue {
+			return []string{fmt.Sprintf("%s must be between %d and %d", key, minValue, maxValue)}
 		}
 	}
 	return nil
 }
 
-func validateRawInt32(key string, min, max int32) []string {
+func validateRawInt32(key string, minValue, maxValue int32) []string {
 	if v, ok := os.LookupEnv(key); ok {
 		n, err := strconv.ParseInt(v, 10, 32)
 		if err != nil {
-			return []string{fmt.Sprintf("%s must be a valid integer", key)}
+			return []string{key + " must be a valid integer"}
 		}
 		parsed := int32(n)
-		if parsed < min || parsed > max {
-			return []string{fmt.Sprintf("%s must be between %d and %d", key, min, max)}
+		if parsed < minValue || parsed > maxValue {
+			return []string{fmt.Sprintf("%s must be between %d and %d", key, minValue, maxValue)}
 		}
 	}
 	return nil
