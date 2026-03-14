@@ -73,7 +73,7 @@ func TestConsumerReadyError(t *testing.T) {
 	consumer := &Consumer{}
 	errExpected := errors.New("boom")
 	consumer.setReadyError(errExpected)
-	if err := consumer.ReadyError(); err != errExpected {
+	if err := consumer.ReadyError(); !errors.Is(err, errExpected) {
 		t.Fatalf("expected ready error %v, got %v", errExpected, err)
 	}
 	consumer.setReadyError(nil)
