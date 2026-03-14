@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bufio"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,6 +21,32 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(statusCode int) {
 	r.status = statusCode
 	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+func (r *statusRecorder) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := r.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
 
 func Observability() func(http.Handler) http.Handler {

@@ -29,6 +29,7 @@ type ChatEvent struct {
 // Producer wraps a Sarama sync producer.
 type Producer struct {
 	producer sarama.SyncProducer
+	client   sarama.Client
 }
 
 func NewProducer(brokers []string) (*Producer, error) {
@@ -37,11 +38,18 @@ func NewProducer(brokers []string) (*Producer, error) {
 	cfg.Producer.RequiredAcks = sarama.WaitForLocal
 	cfg.Producer.Compression = sarama.CompressionSnappy
 
-	p, err := sarama.NewSyncProducer(brokers, cfg)
+	client, err := sarama.NewClient(brokers, cfg)
 	if err != nil {
+		return nil, fmt.Errorf("kafka client: %w", err)
+	}
+	p, err := sarama.NewSyncProducerFromClient(client)
+	if err != nil {
+		if closeErr := client.Close(); closeErr != nil {
+			slog.Error("close kafka client after producer init failure", "err", closeErr)
+		}
 		return nil, fmt.Errorf("kafka producer: %w", err)
 	}
-	return &Producer{producer: p}, nil
+	return &Producer{producer: p, client: client}, nil
 }
 
 // Publish sends a ChatEvent to the given topic using key as the partition key.
@@ -74,7 +82,27 @@ func (p *Producer) Close() error {
 	if err := p.producer.Close(); err != nil {
 		return fmt.Errorf("close producer: %w", err)
 	}
+	if err := p.client.Close(); err != nil {
+		return fmt.Errorf("close producer client: %w", err)
+	}
 	return nil
+}
+
+func (p *Producer) Ping(ctx context.Context) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- p.client.RefreshMetadata()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("ping kafka producer: %w", ctx.Err())
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("ping kafka producer: %w", err)
+		}
+		return nil
+	}
 }
 
 // --- Consumer ---

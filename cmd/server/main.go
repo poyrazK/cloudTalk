@@ -218,8 +218,8 @@ func registerObservabilityRoutes(r chi.Router, pool *pgxpool.Pool, producer *kaf
 			http.Error(w, "database not ready", http.StatusServiceUnavailable)
 			return
 		}
-		if producer == nil {
-			http.Error(w, "producer not ready", http.StatusServiceUnavailable)
+		if err := producer.Ping(checkCtx); err != nil {
+			http.Error(w, "kafka not ready", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
