@@ -38,6 +38,9 @@ func main() {
 
 func run() error {
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("config validate: %w", err)
+	}
 
 	// --- Database ---
 	ctx := context.Background()

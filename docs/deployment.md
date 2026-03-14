@@ -53,4 +53,20 @@ Each pod sets `KAFKA_GROUP_ID` to its own pod name (via Kubernetes Downward API)
 
 ### Health Probes
 
-Both readiness and liveness probes hit `GET /health`. The readiness probe starts after 5 seconds; liveness after 10 seconds.
+- liveness should hit `GET /health`
+- readiness should hit `GET /ready`
+
+Readiness now depends on:
+
+- database connectivity
+- Kafka producer connectivity
+- Kafka consumer session readiness
+
+### Production Config Checklist
+
+Before deploying with `APP_ENV=prod`, ensure:
+
+- `JWT_SECRET` is a strong random value with at least 32 characters
+- `ALLOWED_ORIGINS` is explicitly set
+- `DATABASE_DSN` does not point to localhost
+- `KAFKA_BROKERS` does not use localhost-only endpoints
