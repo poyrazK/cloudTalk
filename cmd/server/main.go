@@ -71,6 +71,9 @@ func run() error {
 		return fmt.Errorf("kafka producer: %w", err)
 	}
 	defer producer.Close()
+	if err := producer.VerifyTopics(ctx, kafka.RequiredTopics()); err != nil {
+		return fmt.Errorf("kafka topic verification: %w", err)
+	}
 
 	// --- Hub ---
 	h := hub.New()
@@ -155,7 +158,7 @@ func run() error {
 	})
 
 	r.Get("/ws", wsH.ServeHTTP)
-	registerObservabilityRoutes(r, pool, producer)
+	registerObservabilityRoutes(r, pool, producer, consumer)
 
 	// --- Server ---
 	srv := &http.Server{
@@ -203,7 +206,7 @@ func startDBPoolMetrics(ctx context.Context, pool *pgxpool.Pool) {
 	}()
 }
 
-func registerObservabilityRoutes(r chi.Router, pool *pgxpool.Pool, producer *kafka.Producer) {
+func registerObservabilityRoutes(r chi.Router, pool *pgxpool.Pool, producer *kafka.Producer, consumer *kafka.Consumer) {
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -220,6 +223,10 @@ func registerObservabilityRoutes(r chi.Router, pool *pgxpool.Pool, producer *kaf
 		}
 		if err := producer.Ping(checkCtx); err != nil {
 			http.Error(w, "kafka not ready", http.StatusServiceUnavailable)
+			return
+		}
+		if err := consumer.ReadyError(); err != nil {
+			http.Error(w, "consumer not ready", http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
