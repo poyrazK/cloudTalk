@@ -34,6 +34,8 @@ In-memory registry of active WebSocket connections on a single instance. Support
 ### Kafka Producer/Consumer (`internal/kafka/`)
 Wraps IBM/sarama. The producer publishes `ChatEvent` JSON payloads. The consumer group uses the pod hostname as its group ID so every pod gets its own copy of each event.
 
+Startup verifies required Kafka topics before serving traffic. Runtime readiness depends on both producer connectivity and consumer session health.
+
 ### Auth Service (`internal/auth/`)
 Stateless JWT access tokens (15 min) + opaque refresh tokens (7 days, stored hashed in DB). No shared session store needed across instances.
 

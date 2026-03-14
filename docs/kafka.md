@@ -8,7 +8,13 @@
 | `chat.dm.messages`   | `receiver_id` | All instances   | Direct messages + DM typing signals  |
 | `chat.presence`      | `user_id`     | All instances   | Online / offline presence events     |
 
-Topics are auto-created by Kafka on first publish (`KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`).
+cloudTalk verifies required topics at startup and fails fast if any are missing.
+
+Required topics:
+
+- `chat.room.messages`
+- `chat.dm.messages`
+- `chat.presence`
 
 ## ChatEvent Envelope
 
@@ -39,6 +45,26 @@ In Kubernetes, `KAFKA_GROUP_ID` is set to the pod name via the Downward API, gua
 - `RequiredAcks`: `WaitForLocal` — waits for the leader to acknowledge.
 - `Compression`: Snappy — reduces bandwidth.
 - `Return.Successes`: true — synchronous confirmation before continuing.
+
+The readiness endpoint also performs a lightweight producer metadata refresh to verify Kafka connectivity.
+
+## Consumer Health
+
+Readiness includes consumer session health.
+
+- before the first successful consumer group session, `/ready` returns `503`
+- consumer loop errors mark Kafka consumer readiness unhealthy until the next successful session setup
+- malformed Kafka messages are logged, counted, and marked consumed
+
+## Failure Metrics
+
+Kafka observability now includes metrics for:
+
+- publish totals and latency
+- consume totals and handler latency
+- consumer loop errors
+- message decode errors
+- topic verification success/failure
 
 ## Fan-out Logic (`cmd/server/main.go → fanOut`)
 
