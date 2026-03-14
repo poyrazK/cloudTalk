@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -34,7 +35,11 @@ func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if !ok {
 		return nil, nil, http.ErrNotSupported
 	}
-	return hijacker.Hijack()
+	conn, rw, err := hijacker.Hijack()
+	if err != nil {
+		return nil, nil, fmt.Errorf("hijack response writer: %w", err)
+	}
+	return conn, rw, nil
 }
 
 func (r *statusRecorder) Push(target string, opts *http.PushOptions) error {
@@ -42,7 +47,10 @@ func (r *statusRecorder) Push(target string, opts *http.PushOptions) error {
 	if !ok {
 		return http.ErrNotSupported
 	}
-	return pusher.Push(target, opts)
+	if err := pusher.Push(target, opts); err != nil {
+		return fmt.Errorf("push response writer: %w", err)
+	}
+	return nil
 }
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter {
