@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/hub"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type presencePayload struct {
@@ -43,14 +45,22 @@ func NewPresenceService(p eventPublisher, h presenceHub, users presenceUserRepos
 	}
 }
 
-func (s *PresenceService) SetOnline(_ context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOnline(ctx context.Context, userID uuid.UUID) {
+	ctx, span := apptrace.Tracer("cloudtalk/presence_service").Start(ctx, "presence.set_online")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID.String()))
+
 	s.mu.Lock()
 	s.online[userID] = struct{}{}
 	s.mu.Unlock()
-	s.publishPresence(userID, "online")
+	s.publishPresence(ctx, userID, "online")
 }
 
-func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
+func (s *PresenceService) SetOffline(ctx context.Context, userID uuid.UUID) {
+	ctx, span := apptrace.Tracer("cloudtalk/presence_service").Start(ctx, "presence.set_offline")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID.String()))
+
 	s.mu.Lock()
 	_, wasOnline := s.online[userID]
 	if wasOnline {
@@ -68,7 +78,7 @@ func (s *PresenceService) SetOffline(_ context.Context, userID uuid.UUID) {
 			slog.Error("update last seen", "err", err, "user_id", userID)
 		}
 	}
-	s.publishPresence(userID, "offline")
+	s.publishPresence(ctx, userID, "offline")
 }
 
 func (s *PresenceService) IsOnline(userID uuid.UUID) bool {
@@ -87,13 +97,13 @@ func (s *PresenceService) HandleKafkaPresence(evt kafka.ChatEvent) {
 	})})
 }
 
-func (s *PresenceService) publishPresence(userID uuid.UUID, status string) {
+func (s *PresenceService) publishPresence(ctx context.Context, userID uuid.UUID, status string) {
 	payload, err := json.Marshal(presencePayload{UserID: userID.String(), Status: status})
 	if err != nil {
 		slog.Error("marshal presence", "err", err)
 		return
 	}
-	if err := s.producer.Publish(kafka.TopicPresence, userID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicPresence, userID.String(), kafka.ChatEvent{
 		Type:    "presence",
 		Payload: payload,
 	}); err != nil {
