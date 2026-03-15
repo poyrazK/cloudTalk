@@ -117,6 +117,7 @@ func TestConfigValidateInvalidOrigin(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // This test mutates process env to verify tracing config validation.
 func TestConfigValidateTracingConfig(t *testing.T) {
 	original, hadOriginal := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
 	if err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG"); err != nil {
@@ -190,6 +191,7 @@ func TestConfigValidateTracingConfig(t *testing.T) {
 		},
 	}
 
+	//nolint:paralleltest // Subtests share env-sensitive setup from the parent test.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := base
