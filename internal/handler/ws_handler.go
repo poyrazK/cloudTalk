@@ -15,6 +15,8 @@ import (
 	"github.com/poyrazk/cloudtalk/internal/kafka"
 	"github.com/poyrazk/cloudtalk/internal/metrics"
 	"github.com/poyrazk/cloudtalk/internal/service"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // incomingMsg is the JSON envelope sent by the client over WebSocket.
@@ -176,10 +178,15 @@ func (h *WSHandler) writePump(ctx context.Context, conn *websocket.Conn, client 
 }
 
 func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client, raw []byte) {
+	ctx, span := apptrace.Tracer("cloudtalk/ws").Start(ctx, "ws.handle_message")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", client.UserID.String()))
+
 	var msg incomingMsg
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return
 	}
+	span.SetAttributes(attribute.String("ws.message_type", msg.Type))
 
 	switch msg.Type {
 	case "join_room":
@@ -220,7 +227,7 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 		h.handleTyping(ctx, client, msg)
 
 	case "typing_dm":
-		h.handleDMTyping(client, msg)
+		h.handleDMTyping(ctx, client, msg)
 	}
 }
 
@@ -435,7 +442,7 @@ func (h *WSHandler) handleTyping(ctx context.Context, client *hub.Client, msg in
 		return
 	}
 
-	if err := h.producer.Publish(kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
+	if err := h.producer.Publish(ctx, kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
 		Type:     "typing",
 		RoomID:   roomID.String(),
 		SenderID: client.UserID.String(),
@@ -445,7 +452,7 @@ func (h *WSHandler) handleTyping(ctx context.Context, client *hub.Client, msg in
 	}
 }
 
-func (h *WSHandler) handleDMTyping(client *hub.Client, msg incomingMsg) {
+func (h *WSHandler) handleDMTyping(ctx context.Context, client *hub.Client, msg incomingMsg) {
 	toID, err := uuid.Parse(msg.To)
 	if err != nil {
 		return
@@ -474,7 +481,7 @@ func (h *WSHandler) handleDMTyping(client *hub.Client, msg incomingMsg) {
 		return
 	}
 
-	if err := h.producer.Publish(kafka.TopicDMMessages, toID.String(), kafka.ChatEvent{
+	if err := h.producer.Publish(ctx, kafka.TopicDMMessages, toID.String(), kafka.ChatEvent{
 		Type:     "typing_dm",
 		SenderID: client.UserID.String(),
 		ToUserID: toID.String(),
