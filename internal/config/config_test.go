@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -117,9 +118,19 @@ func TestConfigValidateInvalidOrigin(t *testing.T) {
 }
 
 func TestConfigValidateTracingConfig(t *testing.T) {
-	t.Parallel()
+	original, hadOriginal := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
+	if err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG"); err != nil {
+		t.Fatalf("unset OTEL_TRACES_SAMPLER_ARG: %v", err)
+	}
+	t.Cleanup(func() {
+		if hadOriginal {
+			_ = os.Setenv("OTEL_TRACES_SAMPLER_ARG", original)
+			return
+		}
+		_ = os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
+	})
 
-	cfg := &Config{
+	base := Config{
 		AppEnv:                EnvDev,
 		TracingEnabled:        true,
 		TracingEndpoint:       "http://localhost:4318/v1/traces",
@@ -140,13 +151,53 @@ func TestConfigValidateTracingConfig(t *testing.T) {
 		RateLimit:             20,
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := base.Validate(); err != nil {
 		t.Fatalf("expected tracing config valid, got %v", err)
 	}
 
-	cfg.TracingSampleRatio = 1.5
-	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "OTEL_TRACES_SAMPLER_ARG must be between 0 and 1") {
-		t.Fatalf("expected invalid tracing ratio error, got %v", err)
+	tests := []struct {
+		name       string
+		mutate     func(*Config)
+		wantErrSub string
+	}{
+		{
+			name: "invalid sample ratio",
+			mutate: func(cfg *Config) {
+				cfg.TracingSampleRatio = 1.5
+			},
+			wantErrSub: "OTEL_TRACES_SAMPLER_ARG must be between 0 and 1",
+		},
+		{
+			name: "empty endpoint",
+			mutate: func(cfg *Config) {
+				cfg.TracingEndpoint = ""
+			},
+			wantErrSub: "OTEL_EXPORTER_OTLP_ENDPOINT must not be empty when tracing is enabled",
+		},
+		{
+			name: "invalid endpoint",
+			mutate: func(cfg *Config) {
+				cfg.TracingEndpoint = "localhost:4318/v1/traces"
+			},
+			wantErrSub: "OTEL_EXPORTER_OTLP_ENDPOINT must be a valid URL when tracing is enabled",
+		},
+		{
+			name: "empty service name",
+			mutate: func(cfg *Config) {
+				cfg.TracingServiceName = ""
+			},
+			wantErrSub: "OTEL_SERVICE_NAME must not be empty when tracing is enabled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base
+			tt.mutate(&cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrSub) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErrSub, err)
+			}
+		})
 	}
 }

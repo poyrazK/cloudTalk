@@ -300,7 +300,7 @@ func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 			session.MarkMessage(msg, "")
 			continue
 		}
-		ctx := otel.GetTextMapPropagator().Extract(context.Background(), consumerMessageCarrier{headers: msg.Headers})
+		ctx := otel.GetTextMapPropagator().Extract(session.Context(), consumerMessageCarrier{headers: msg.Headers})
 		ctx, span := apptrace.Tracer("cloudtalk/kafka").Start(ctx, "kafka.consume",
 			trace.WithAttributes(
 				attribute.String("messaging.system", "kafka"),

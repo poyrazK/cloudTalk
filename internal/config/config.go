@@ -88,7 +88,7 @@ func (c *Config) validateTracingConfig() []string {
 	issues = append(issues, validateRawTraceSampleRatio("OTEL_TRACES_SAMPLER_ARG")...)
 	if c.TracingEndpoint == "" {
 		issues = append(issues, "OTEL_EXPORTER_OTLP_ENDPOINT must not be empty when tracing is enabled")
-	} else if _, err := url.Parse(c.TracingEndpoint); err != nil {
+	} else if parsed, err := url.Parse(c.TracingEndpoint); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		issues = append(issues, "OTEL_EXPORTER_OTLP_ENDPOINT must be a valid URL when tracing is enabled")
 	}
 	if c.TracingServiceName == "" {
