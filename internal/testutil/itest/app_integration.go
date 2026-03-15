@@ -3,6 +3,7 @@
 package itest
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -81,4 +82,6 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 
 type nilPublisher struct{}
 
-func (nilPublisher) Publish(_ string, _ string, _ kafka.ChatEvent) error { return nil }
+func (nilPublisher) Publish(_ context.Context, _ string, _ string, _ kafka.ChatEvent) error {
+	return nil
+}

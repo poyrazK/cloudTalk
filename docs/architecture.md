@@ -53,3 +53,4 @@ For message-level behavior details (receipts, unread counts, edit/delete), see `
 - `/ready` verifies runtime readiness, including database connectivity.
 - `/metrics` exposes Prometheus metrics for HTTP, WebSocket, Kafka, and DB pool activity.
 - HTTP requests carry request IDs and are logged with route pattern, status, and latency.
+- OpenTelemetry tracing can be enabled with OTLP export for HTTP, Kafka, WebSocket, and service flows.

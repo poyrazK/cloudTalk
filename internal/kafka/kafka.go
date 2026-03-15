@@ -12,6 +12,11 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/poyrazk/cloudtalk/internal/metrics"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -66,10 +71,20 @@ func NewProducer(brokers []string) (*Producer, error) {
 }
 
 // Publish sends a ChatEvent to the given topic using key as the partition key.
-func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
+func (p *Producer) Publish(ctx context.Context, topic, key string, evt ChatEvent) error {
+	ctx, span := otel.Tracer("cloudtalk/kafka").Start(ctx, "kafka.produce",
+		trace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", topic),
+			attribute.String("messaging.operation", "publish"),
+		),
+	)
+	defer span.End()
+
 	start := time.Now()
 	data, err := json.Marshal(evt)
 	if err != nil {
+		span.RecordError(err)
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
 		metrics.KafkaPublishDuration.WithLabelValues(topic, "error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("marshal chat event: %w", err)
@@ -79,8 +94,11 @@ func (p *Producer) Publish(topic, key string, evt ChatEvent) error {
 		Key:   sarama.StringEncoder(key),
 		Value: sarama.ByteEncoder(data),
 	}
+	carrier := producerMessageCarrier{msg: msg}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	_, _, err = p.producer.SendMessage(msg)
 	if err != nil {
+		span.RecordError(err)
 		metrics.KafkaPublishTotal.WithLabelValues(topic, "error").Inc()
 		metrics.KafkaPublishDuration.WithLabelValues(topic, "error").Observe(time.Since(start).Seconds())
 		return fmt.Errorf("send kafka message: %w", err)
@@ -178,7 +196,7 @@ func verifyTopics(client metadataClient, topics []string) error {
 // --- Consumer ---
 
 // MessageHandler is called for each Kafka message.
-type MessageHandler func(topic string, evt ChatEvent)
+type MessageHandler func(ctx context.Context, topic string, evt ChatEvent)
 
 // Consumer wraps a Sarama consumer group.
 type Consumer struct {
@@ -282,10 +300,79 @@ func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 			session.MarkMessage(msg, "")
 			continue
 		}
-		h.handler(msg.Topic, evt)
+		ctx := otel.GetTextMapPropagator().Extract(session.Context(), consumerMessageCarrier{headers: msg.Headers})
+		ctx, span := apptrace.Tracer("cloudtalk/kafka").Start(ctx, "kafka.consume",
+			trace.WithAttributes(
+				attribute.String("messaging.system", "kafka"),
+				attribute.String("messaging.destination.name", msg.Topic),
+				attribute.Int64("messaging.kafka.partition", int64(msg.Partition)),
+				attribute.Int64("messaging.kafka.offset", msg.Offset),
+			),
+		)
+		h.handler(ctx, msg.Topic, evt)
+		span.End()
 		metrics.KafkaConsumeTotal.WithLabelValues(msg.Topic).Inc()
 		metrics.KafkaConsumeDuration.WithLabelValues(msg.Topic).Observe(time.Since(start).Seconds())
 		session.MarkMessage(msg, "")
 	}
 	return nil
 }
+
+type producerMessageCarrier struct {
+	msg *sarama.ProducerMessage
+}
+
+func (c producerMessageCarrier) Get(key string) string {
+	for _, header := range c.msg.Headers {
+		if string(header.Key) == key {
+			return string(header.Value)
+		}
+	}
+	return ""
+}
+
+func (c producerMessageCarrier) Set(key, value string) {
+	for i, header := range c.msg.Headers {
+		if string(header.Key) == key {
+			c.msg.Headers[i].Value = []byte(value)
+			return
+		}
+	}
+	c.msg.Headers = append(c.msg.Headers, sarama.RecordHeader{Key: []byte(key), Value: []byte(value)})
+}
+
+func (c producerMessageCarrier) Keys() []string {
+	keys := make([]string, 0, len(c.msg.Headers))
+	for _, header := range c.msg.Headers {
+		keys = append(keys, string(header.Key))
+	}
+	return keys
+}
+
+type consumerMessageCarrier struct {
+	headers []*sarama.RecordHeader
+}
+
+func (c consumerMessageCarrier) Get(key string) string {
+	for _, header := range c.headers {
+		if string(header.Key) == key {
+			return string(header.Value)
+		}
+	}
+	return ""
+}
+
+func (c consumerMessageCarrier) Set(_, _ string) {}
+
+func (c consumerMessageCarrier) Keys() []string {
+	keys := make([]string, 0, len(c.headers))
+	for _, header := range c.headers {
+		keys = append(keys, string(header.Key))
+	}
+	return keys
+}
+
+var (
+	_ propagation.TextMapCarrier = producerMessageCarrier{}
+	_ propagation.TextMapCarrier = consumerMessageCarrier{}
+)

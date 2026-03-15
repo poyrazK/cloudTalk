@@ -15,38 +15,48 @@ const (
 )
 
 type Config struct {
-	AppEnv         string
-	Port           string
-	DatabaseDSN    string
-	DBMaxConns     int32
-	DBMinConns     int32
-	DBMaxConnLife  int // seconds
-	DBMaxConnIdle  int // seconds
-	KafkaBrokers   []string
-	KafkaGroupID   string
-	JWTSecret      string
-	JWTExpMinutes  int
-	RefreshExpDays int
-	AllowedOrigins []string
-	RateLimit      int
+	AppEnv                string
+	TracingEnabled        bool
+	TracingEndpoint       string
+	TracingSampleRatio    float64
+	TracingServiceName    string
+	TracingServiceVersion string
+	Port                  string
+	DatabaseDSN           string
+	DBMaxConns            int32
+	DBMinConns            int32
+	DBMaxConnLife         int // seconds
+	DBMaxConnIdle         int // seconds
+	KafkaBrokers          []string
+	KafkaGroupID          string
+	JWTSecret             string
+	JWTExpMinutes         int
+	RefreshExpDays        int
+	AllowedOrigins        []string
+	RateLimit             int
 }
 
 func Load() *Config {
 	return &Config{
-		AppEnv:         getEnv("APP_ENV", EnvDev),
-		Port:           getEnv("PORT", "8080"),
-		DatabaseDSN:    getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
-		DBMaxConns:     getEnvInt32("DB_MAX_CONNS", 20),
-		DBMinConns:     getEnvInt32("DB_MIN_CONNS", 2),
-		DBMaxConnLife:  getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
-		DBMaxConnIdle:  getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
-		KafkaBrokers:   splitCSV(getEnv("KAFKA_BROKERS", "localhost:9092")),
-		KafkaGroupID:   getEnv("KAFKA_GROUP_ID", hostnameOrDefault("cloudtalk")),
-		JWTSecret:      getEnv("JWT_SECRET", "change-me-in-production"),
-		JWTExpMinutes:  getEnvInt("JWT_EXP_MINUTES", 15),
-		RefreshExpDays: getEnvInt("REFRESH_EXP_DAYS", 7),
-		AllowedOrigins: splitCSV(getEnv("ALLOWED_ORIGINS", "")),
-		RateLimit:      getEnvInt("AUTH_RATE_LIMIT_RPM", 20),
+		AppEnv:                getEnv("APP_ENV", EnvDev),
+		TracingEnabled:        getEnvBool("TRACING_ENABLED", false),
+		TracingEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+		TracingSampleRatio:    getEnvFloat64("OTEL_TRACES_SAMPLER_ARG", 0.1),
+		TracingServiceName:    getEnv("OTEL_SERVICE_NAME", "cloudtalk"),
+		TracingServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
+		Port:                  getEnv("PORT", "8080"),
+		DatabaseDSN:           getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
+		DBMaxConns:            getEnvInt32("DB_MAX_CONNS", 20),
+		DBMinConns:            getEnvInt32("DB_MIN_CONNS", 2),
+		DBMaxConnLife:         getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
+		DBMaxConnIdle:         getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
+		KafkaBrokers:          splitCSV(getEnv("KAFKA_BROKERS", "localhost:9092")),
+		KafkaGroupID:          getEnv("KAFKA_GROUP_ID", hostnameOrDefault("cloudtalk")),
+		JWTSecret:             getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpMinutes:         getEnvInt("JWT_EXP_MINUTES", 15),
+		RefreshExpDays:        getEnvInt("REFRESH_EXP_DAYS", 7),
+		AllowedOrigins:        splitCSV(getEnv("ALLOWED_ORIGINS", "")),
+		RateLimit:             getEnvInt("AUTH_RATE_LIMIT_RPM", 20),
 	}
 }
 
@@ -59,12 +69,46 @@ func (c *Config) Validate() error {
 	issues = append(issues, validateNumericEnvConfig()...)
 	issues = append(issues, c.validateBaseConfig()...)
 	issues = append(issues, c.validateOrigins()...)
+	issues = append(issues, c.validateTracingConfig()...)
 	if c.AppEnv == EnvProd {
 		issues = append(issues, c.validateProdConfig()...)
 	}
 
 	if len(issues) > 0 {
 		return fmt.Errorf("invalid config: %s", strings.Join(issues, "; "))
+	}
+	return nil
+}
+
+func (c *Config) validateTracingConfig() []string {
+	if !c.TracingEnabled {
+		return nil
+	}
+	var issues []string
+	issues = append(issues, validateRawTraceSampleRatio("OTEL_TRACES_SAMPLER_ARG")...)
+	if c.TracingEndpoint == "" {
+		issues = append(issues, "OTEL_EXPORTER_OTLP_ENDPOINT must not be empty when tracing is enabled")
+	} else if parsed, err := url.Parse(c.TracingEndpoint); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		issues = append(issues, "OTEL_EXPORTER_OTLP_ENDPOINT must be a valid URL when tracing is enabled")
+	}
+	if c.TracingServiceName == "" {
+		issues = append(issues, "OTEL_SERVICE_NAME must not be empty when tracing is enabled")
+	}
+	if c.TracingSampleRatio < 0 || c.TracingSampleRatio > 1 {
+		issues = append(issues, "OTEL_TRACES_SAMPLER_ARG must be between 0 and 1")
+	}
+	return issues
+}
+
+func validateRawTraceSampleRatio(key string) []string {
+	if v, ok := os.LookupEnv(key); ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return []string{key + " must be a valid float"}
+		}
+		if n < 0 || n > 1 {
+			return []string{key + " must be between 0 and 1"}
+		}
 	}
 	return nil
 }
@@ -210,6 +254,24 @@ func getEnvInt32(key string, fallback int32) int32 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
 			return int32(n)
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return fallback
+}
+
+func getEnvFloat64(key string, fallback float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseFloat(v, 64); err == nil {
+			return n
 		}
 	}
 	return fallback

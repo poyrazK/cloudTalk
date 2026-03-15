@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/poyrazk/cloudtalk/internal/metrics"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
 )
 
 type statusRecorder struct {
@@ -79,6 +80,7 @@ func Observability() func(http.Handler) http.Handler {
 				"status", recorder.status,
 				"duration_ms", time.Since(start).Milliseconds(),
 				"remote_addr", r.RemoteAddr,
+				"trace_id", apptrace.TraceIDFromContext(r.Context()),
 			)
 		})
 	}

@@ -218,7 +218,7 @@ func (f *fakeMessageUserRepo) GetByID(_ context.Context, id uuid.UUID) (*model.U
 	return u, nil
 }
 
-func (f *fakePublisher) Publish(topic, key string, evt kafka.ChatEvent) error {
+func (f *fakePublisher) Publish(_ context.Context, topic, key string, evt kafka.ChatEvent) error {
 	f.topic = topic
 	f.key = key
 	f.event = evt

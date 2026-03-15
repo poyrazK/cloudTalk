@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/kafka"
 	"github.com/poyrazk/cloudtalk/internal/model"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type MessageService struct {
@@ -60,7 +62,7 @@ type messageUserRepository interface {
 }
 
 type eventPublisher interface {
-	Publish(topic, key string, evt kafka.ChatEvent) error
+	Publish(ctx context.Context, topic, key string, evt kafka.ChatEvent) error
 }
 
 type messagePresenceReader interface {
@@ -76,6 +78,10 @@ func NewMessageServiceWithPresence(rr messageRoomRepository, mr messageRepositor
 }
 
 func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID uuid.UUID, content string) (*model.Message, error) {
+	ctx, span := apptrace.Tracer("cloudtalk/message_service").Start(ctx, "message.send_room")
+	defer span.End()
+	span.SetAttributes(attribute.String("room.id", roomID.String()), attribute.String("user.id", senderID.String()))
+
 	ok, err := s.roomRepo.IsMember(ctx, roomID, senderID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrRoomMembershipCheck, err)
@@ -100,7 +106,7 @@ func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID u
 		slog.Error("marshal room message", "err", err)
 		return msg, nil
 	}
-	if err := s.producer.Publish(kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicRoomMessages, roomID.String(), kafka.ChatEvent{
 		Type:     "message",
 		RoomID:   roomID.String(),
 		SenderID: senderID.String(),
@@ -112,6 +118,10 @@ func (s *MessageService) SendRoomMessage(ctx context.Context, roomID, senderID u
 }
 
 func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.UUID, content string) (*model.DirectMessage, error) {
+	ctx, span := apptrace.Tracer("cloudtalk/message_service").Start(ctx, "message.send_dm")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", senderID.String()), attribute.String("dm.to_user_id", receiverID.String()))
+
 	if senderID == receiverID {
 		return nil, ErrDMToSelfForbidden
 	}
@@ -132,7 +142,7 @@ func (s *MessageService) SendDM(ctx context.Context, senderID, receiverID uuid.U
 		slog.Error("marshal dm", "err", err)
 		return dm, nil
 	}
-	if err := s.producer.Publish(kafka.TopicDMMessages, receiverID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicDMMessages, receiverID.String(), kafka.ChatEvent{
 		Type:     "dm",
 		SenderID: senderID.String(),
 		ToUserID: receiverID.String(),
@@ -168,6 +178,10 @@ func (s *MessageService) DMUnreadCounts(ctx context.Context, userID uuid.UUID) (
 }
 
 func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, limit int) ([]*model.DMConversation, error) {
+	ctx, span := apptrace.Tracer("cloudtalk/message_service").Start(ctx, "message.dm_conversations")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID.String()), attribute.Int("pagination.limit", limit))
+
 	heads, err := s.messageRepo.ListDMConversationHeads(ctx, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("load dm conversation heads: %w", err)
@@ -221,7 +235,7 @@ func (s *MessageService) MarkDMDelivered(ctx context.Context, dmID, actorID uuid
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload dm after delivered: %w", ErrMessagePersistence, err)
 	}
-	s.publishDMReceipt(updated)
+	s.publishDMReceipt(ctx, updated)
 	return updated, nil
 }
 
@@ -241,11 +255,11 @@ func (s *MessageService) MarkDMRead(ctx context.Context, dmID, actorID uuid.UUID
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload dm after read: %w", ErrMessagePersistence, err)
 	}
-	s.publishDMReceipt(updated)
+	s.publishDMReceipt(ctx, updated)
 	return updated, nil
 }
 
-func (s *MessageService) publishDMReceipt(dm *model.DirectMessage) {
+func (s *MessageService) publishDMReceipt(ctx context.Context, dm *model.DirectMessage) {
 	payload, err := json.Marshal(map[string]interface{}{
 		"dm_id":        dm.ID.String(),
 		"sender_id":    dm.SenderID.String(),
@@ -257,7 +271,7 @@ func (s *MessageService) publishDMReceipt(dm *model.DirectMessage) {
 		slog.Error("marshal dm receipt", "err", err)
 		return
 	}
-	if err := s.producer.Publish(kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
 		Type:     "dm_receipt",
 		SenderID: dm.SenderID.String(),
 		ToUserID: dm.ReceiverID.String(),
@@ -286,7 +300,7 @@ func (s *MessageService) EditRoomMessage(ctx context.Context, messageID, actorID
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload edited room message: %w", ErrMessagePersistence, err)
 	}
-	s.publishRoomEvent("message_updated", updated)
+	s.publishRoomEvent(ctx, "message_updated", updated)
 	return updated, nil
 }
 
@@ -306,7 +320,7 @@ func (s *MessageService) DeleteRoomMessage(ctx context.Context, messageID, actor
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload deleted room message: %w", ErrMessagePersistence, err)
 	}
-	s.publishRoomEvent("message_deleted", updated)
+	s.publishRoomEvent(ctx, "message_deleted", updated)
 	return updated, nil
 }
 
@@ -329,7 +343,7 @@ func (s *MessageService) EditDM(ctx context.Context, dmID, actorID uuid.UUID, ne
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload edited dm: %w", ErrMessagePersistence, err)
 	}
-	s.publishDMEvent("dm_updated", updated)
+	s.publishDMEvent(ctx, "dm_updated", updated)
 	return updated, nil
 }
 
@@ -349,17 +363,17 @@ func (s *MessageService) DeleteDM(ctx context.Context, dmID, actorID uuid.UUID) 
 	if err != nil {
 		return nil, fmt.Errorf("%w: reload deleted dm: %w", ErrMessagePersistence, err)
 	}
-	s.publishDMEvent("dm_deleted", updated)
+	s.publishDMEvent(ctx, "dm_deleted", updated)
 	return updated, nil
 }
 
-func (s *MessageService) publishRoomEvent(eventType string, msg *model.Message) {
+func (s *MessageService) publishRoomEvent(ctx context.Context, eventType string, msg *model.Message) {
 	payload, err := json.Marshal(msg)
 	if err != nil {
 		slog.Error("marshal room event", "type", eventType, "err", err)
 		return
 	}
-	if err := s.producer.Publish(kafka.TopicRoomMessages, msg.RoomID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicRoomMessages, msg.RoomID.String(), kafka.ChatEvent{
 		Type:     eventType,
 		RoomID:   msg.RoomID.String(),
 		SenderID: msg.SenderID.String(),
@@ -369,13 +383,13 @@ func (s *MessageService) publishRoomEvent(eventType string, msg *model.Message) 
 	}
 }
 
-func (s *MessageService) publishDMEvent(eventType string, dm *model.DirectMessage) {
+func (s *MessageService) publishDMEvent(ctx context.Context, eventType string, dm *model.DirectMessage) {
 	payload, err := json.Marshal(dm)
 	if err != nil {
 		slog.Error("marshal dm event", "type", eventType, "err", err)
 		return
 	}
-	if err := s.producer.Publish(kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
+	if err := s.producer.Publish(ctx, kafka.TopicDMMessages, dm.ReceiverID.String(), kafka.ChatEvent{
 		Type:     eventType,
 		SenderID: dm.SenderID.String(),
 		ToUserID: dm.ReceiverID.String(),

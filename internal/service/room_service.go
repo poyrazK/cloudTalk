@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/poyrazk/cloudtalk/internal/model"
+	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type RoomService struct {
@@ -125,6 +127,10 @@ func (s *RoomService) UnreadCounts(ctx context.Context, userID uuid.UUID) ([]*mo
 }
 
 func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversation, error) {
+	ctx, span := apptrace.Tracer("cloudtalk/room_service").Start(ctx, "room.conversations")
+	defer span.End()
+	span.SetAttributes(attribute.String("user.id", userID.String()), attribute.Int("pagination.limit", limit))
+
 	heads, err := s.rooms.ListRoomConversationHeads(ctx, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list room conversation heads: %w", err)
@@ -174,6 +180,10 @@ func (s *RoomService) Conversations(ctx context.Context, userID uuid.UUID, limit
 }
 
 func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
+	ctx, span := apptrace.Tracer("cloudtalk/room_service").Start(ctx, "room.members")
+	defer span.End()
+	span.SetAttributes(attribute.String("room.id", roomID.String()))
+
 	members, err := s.rooms.ListRoomMembers(ctx, roomID)
 	if err != nil {
 		return nil, fmt.Errorf("list room members: %w", err)
