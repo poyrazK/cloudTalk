@@ -23,6 +23,7 @@ API: `http://localhost:8080` — WebSocket: `ws://localhost:8080/ws?token=<jwt>`
 | [Database](docs/database.md) | Schema & migration guide |
 | [Deployment](docs/deployment.md) | Docker Compose & Kubernetes |
 | [Configuration](docs/configuration.md) | All environment variables |
+| [Tracing](docs/tracing.md) | OpenTelemetry tracing setup |
 
 ## Tech Stack
 

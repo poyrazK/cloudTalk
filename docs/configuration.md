@@ -5,6 +5,11 @@ All configuration is provided via environment variables. Copy `.env.example` to 
 | Variable           | Required | Default                                                                  | Description                                      |
 |--------------------|----------|--------------------------------------------------------------------------|--------------------------------------------------|
 | `APP_ENV`          | No       | `dev`                                                                    | Runtime mode: `dev` or `prod`                    |
+| `TRACING_ENABLED`  | No       | `false`                                                                  | Enables OpenTelemetry tracing                    |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | `http://localhost:4318/v1/traces`                                 | OTLP traces endpoint                             |
+| `OTEL_TRACES_SAMPLER_ARG` | No | `0.1`                                                              | Trace sampling ratio (`0.0`-`1.0`)               |
+| `OTEL_SERVICE_NAME` | No      | `cloudtalk`                                                              | Traced service name                              |
+| `OTEL_SERVICE_VERSION` | No   | `dev`                                                                    | Traced service version label                     |
 | `PORT`             | No       | `8080`                                                                   | HTTP server port                                 |
 | `DATABASE_DSN`     | Yes      | `postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable`  | PostgreSQL connection string                     |
 | `KAFKA_BROKERS`    | Yes      | `localhost:9092`                                                         | Comma-separated Kafka broker addresses           |
@@ -21,8 +26,10 @@ Startup fails fast on invalid configuration.
 
 - `APP_ENV` must be `dev` or `prod`
 - numeric env vars must be valid positive integers within sane ranges
+- `OTEL_TRACES_SAMPLER_ARG` must be a valid float between `0` and `1`
 - `DB_MIN_CONNS` must not exceed `DB_MAX_CONNS`
 - each `ALLOWED_ORIGINS` entry must be a valid absolute origin URL
+- when tracing is enabled, `OTEL_EXPORTER_OTLP_ENDPOINT` must be a valid URL and `OTEL_SERVICE_NAME` must be set
 
 ## Production Requirements
 
