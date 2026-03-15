@@ -115,3 +115,38 @@ func TestConfigValidateInvalidOrigin(t *testing.T) {
 		t.Fatalf("expected invalid origin error, got %v", err)
 	}
 }
+
+func TestConfigValidateTracingConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		AppEnv:                EnvDev,
+		TracingEnabled:        true,
+		TracingEndpoint:       "http://localhost:4318/v1/traces",
+		TracingSampleRatio:    0.25,
+		TracingServiceName:    "cloudtalk",
+		TracingServiceVersion: "dev",
+		Port:                  "8080",
+		DatabaseDSN:           "postgres://postgres:postgres@db:5432/cloudtalk?sslmode=disable",
+		DBMaxConns:            20,
+		DBMinConns:            2,
+		DBMaxConnLife:         3600,
+		DBMaxConnIdle:         300,
+		KafkaBrokers:          []string{"kafka:9092"},
+		KafkaGroupID:          "cloudtalk-dev",
+		JWTSecret:             "dev-secret-is-good-enough-for-local",
+		JWTExpMinutes:         15,
+		RefreshExpDays:        7,
+		RateLimit:             20,
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected tracing config valid, got %v", err)
+	}
+
+	cfg.TracingSampleRatio = 1.5
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "OTEL_TRACES_SAMPLER_ARG must be between 0 and 1") {
+		t.Fatalf("expected invalid tracing ratio error, got %v", err)
+	}
+}

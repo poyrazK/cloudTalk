@@ -37,8 +37,8 @@ type loopbackPublisher struct {
 	h *hub.Hub
 }
 
-func (p loopbackPublisher) Publish(topic, _ string, evt kafka.ChatEvent) error {
-	realtimeFanOut(p.h, topic, evt)
+func (p loopbackPublisher) Publish(ctx context.Context, topic, _ string, evt kafka.ChatEvent) error {
+	realtimeFanOut(ctx, p.h, topic, evt)
 	return nil
 }
 
@@ -131,8 +131,8 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 
 	groupID := "itest-" + uuid.NewString()
 	topics := []string{kafka.TopicRoomMessages, kafka.TopicDMMessages, kafka.TopicPresence}
-	consumer, err := kafka.NewConsumer(env.Brokers, groupID, topics, func(topic string, evt kafka.ChatEvent) {
-		realtimeFanOut(h, topic, evt)
+	consumer, err := kafka.NewConsumer(env.Brokers, groupID, topics, func(ctx context.Context, topic string, evt kafka.ChatEvent) {
+		realtimeFanOut(ctx, h, topic, evt)
 	})
 	if err != nil {
 		_ = producer.Close()
@@ -218,7 +218,7 @@ func (a *RealtimeApp) Close() {
 	}
 }
 
-func realtimeFanOut(h *hub.Hub, topic string, evt kafka.ChatEvent) {
+func realtimeFanOut(_ context.Context, h *hub.Hub, topic string, evt kafka.ChatEvent) {
 	switch topic {
 	case kafka.TopicRoomMessages:
 		roomID, err := uuid.Parse(evt.RoomID)
