@@ -34,7 +34,7 @@ Startup fails fast on invalid configuration.
 
 - `APP_ENV` must be `dev` or `prod`
 - numeric env vars must be valid positive integers within sane ranges
-- WebSocket throttle rates must be valid positive floats
+- WebSocket throttle RPS values must be valid positive floats; burst values (for example `WS_*_BURST`) must be valid positive integers
 - `OTEL_TRACES_SAMPLER_ARG` must be a valid float between `0` and `1`
 - `DB_MIN_CONNS` must not exceed `DB_MAX_CONNS`
 - each `ALLOWED_ORIGINS` entry must be a valid absolute origin URL

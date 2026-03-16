@@ -59,6 +59,16 @@ func TestWSHandlerHandleThrottledEventRejectsWithErrorPayload(t *testing.T) {
 		if out.Type != "error" {
 			t.Fatalf("expected error event, got %q", out.Type)
 		}
+		var payload map[string]string
+		if err := json.Unmarshal(out.Payload, &payload); err != nil {
+			t.Fatalf("unmarshal error payload: %v", err)
+		}
+		if payload["code"] != "rate_limited" {
+			t.Fatalf("expected rate_limited code, got %q", payload["code"])
+		}
+		if payload["message"] != "too many websocket events" {
+			t.Fatalf("unexpected throttle message: %q", payload["message"])
+		}
 	default:
 		t.Fatal("expected throttled reject event to be sent")
 	}

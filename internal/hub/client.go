@@ -8,6 +8,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	GroupChat   = "chat"
+	GroupTyping = "typing"
+	GroupRead   = "read"
+	GroupRoom   = "room"
+)
+
 // Event is a serialized message delivered to WebSocket clients.
 type Event struct {
 	Data []byte
@@ -34,7 +41,16 @@ type ThrottleConfig struct {
 }
 
 func NewClient(userID uuid.UUID, throttle ...ThrottleConfig) *Client {
-	config := ThrottleConfig{}
+	config := ThrottleConfig{
+		ChatRate:    rate.Inf,
+		ChatBurst:   1,
+		TypingRate:  rate.Inf,
+		TypingBurst: 1,
+		ReadRate:    rate.Inf,
+		ReadBurst:   1,
+		RoomRate:    rate.Inf,
+		RoomBurst:   1,
+	}
 	if len(throttle) > 0 {
 		config = throttle[0]
 	}
@@ -43,10 +59,10 @@ func NewClient(userID uuid.UUID, throttle ...ThrottleConfig) *Client {
 		Send:   make(chan Event, 256),
 		rooms:  make(map[uuid.UUID]struct{}),
 		limits: map[string]*rate.Limiter{
-			"chat":   rate.NewLimiter(config.ChatRate, config.ChatBurst),
-			"typing": rate.NewLimiter(config.TypingRate, config.TypingBurst),
-			"read":   rate.NewLimiter(config.ReadRate, config.ReadBurst),
-			"room":   rate.NewLimiter(config.RoomRate, config.RoomBurst),
+			GroupChat:   rate.NewLimiter(config.ChatRate, config.ChatBurst),
+			GroupTyping: rate.NewLimiter(config.TypingRate, config.TypingBurst),
+			GroupRead:   rate.NewLimiter(config.ReadRate, config.ReadBurst),
+			GroupRoom:   rate.NewLimiter(config.RoomRate, config.RoomBurst),
 		},
 	}
 }

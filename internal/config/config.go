@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -156,8 +157,8 @@ func validateRawPositiveFloat(key string) []string {
 		if err != nil {
 			return []string{key + " must be a valid float"}
 		}
-		if n <= 0 {
-			return []string{key + " must be greater than 0"}
+		if math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 {
+			return []string{key + " must be a finite float greater than 0"}
 		}
 	}
 	return nil

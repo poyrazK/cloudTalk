@@ -483,14 +483,13 @@ func TestWSTypingThrottleDropsBurstSilently(t *testing.T) {
 		if err := c1.WriteJSON(map[string]any{"type": "typing", "room_id": room.ID.String(), "typing": true}); err != nil {
 			t.Fatalf("typing write: %v", err)
 		}
-		if waitForWSEvent(c2, 40*time.Millisecond, func(env wsEnvelope) bool {
+		waitForWSEvent(c2, 40*time.Millisecond, func(env wsEnvelope) bool {
 			if env.Type != "typing" {
 				return false
 			}
 			typingEvents++
 			return true
-		}) {
-		}
+		})
 	}
 
 	if typingEvents >= 8 {

@@ -138,10 +138,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
-	writeWait  = 10 * time.Second
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
-	maxMsgSize = 4096
+	writeWait         = 10 * time.Second
+	pongWait          = 60 * time.Second
+	pingPeriod        = (pongWait * 9) / 10
+	maxMsgSize        = 4096
+	rejectSendTimeout = 100 * time.Millisecond
 )
 
 func (h *WSHandler) readPump(ctx context.Context, conn *websocket.Conn, client *hub.Client) {
@@ -260,19 +261,19 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 func (h *WSHandler) allowClientMessage(client *hub.Client, msgType string) (bool, string) {
 	switch msgType {
 	case "typing", "typing_dm":
-		if !client.Allow("typing") {
+		if !client.Allow(hub.GroupTyping) {
 			return false, "drop"
 		}
 	case "message", "dm", "edit_message", "delete_message", "edit_dm", "delete_dm":
-		if !client.Allow("chat") {
+		if !client.Allow(hub.GroupChat) {
 			return false, "reject"
 		}
 	case "read_dm", "read_room":
-		if !client.Allow("read") {
+		if !client.Allow(hub.GroupRead) {
 			return false, "reject"
 		}
 	case "join_room", "leave_room":
-		if !client.Allow("room") {
+		if !client.Allow(hub.GroupRoom) {
 			return false, "reject"
 		}
 	}
@@ -305,7 +306,12 @@ func (h *WSHandler) handleThrottledEvent(ctx context.Context, client *hub.Client
 	}
 	select {
 	case client.Send <- hub.Event{Data: data}:
-	default:
+	case <-time.After(rejectSendTimeout):
+		slog.Warn("ws: throttled reject response timed out",
+			"user_id", client.UserID,
+			"message_type", msgType,
+			"trace_id", apptrace.TraceIDFromContext(ctx),
+		)
 	}
 }
 
