@@ -421,32 +421,24 @@ func TestWSRoomSubscriptionThrottleRejectsBurstWithErrorEvent(t *testing.T) {
 	defer conn.Close()
 
 	throttled := false
-	rejectedErrors := 0
 	roomID := model.Room{ID: uuid.New()}.ID.String()
 	for i := 0; i < 12; i++ {
 		if err := conn.WriteJSON(map[string]any{"type": "join_room", "room_id": roomID}); err != nil {
 			t.Fatalf("write burst join_room: %v", err)
 		}
-		if waitForWSEvent(conn, 200*time.Millisecond, func(env wsEnvelope) bool {
-			if env.Type != "error" {
-				return false
-			}
-			var payload map[string]any
-			if err := json.Unmarshal(env.Payload, &payload); err != nil {
-				return false
-			}
-			if payload["code"] == "rate_limited" {
-				rejectedErrors++
-				return true
-			}
-			return false
-		}) {
-			throttled = true
-			break
-		}
 	}
+	throttled = waitForWSEvent(conn, 2*time.Second, func(env wsEnvelope) bool {
+		if env.Type != "error" {
+			return false
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(env.Payload, &payload); err != nil {
+			return false
+		}
+		return payload["code"] == "rate_limited"
+	})
 	if !throttled {
-		t.Fatalf("expected join_room burst to be rate limited, saw %d rate-limited error events", rejectedErrors)
+		t.Fatal("expected join_room burst to be rate limited")
 	}
 }
 
