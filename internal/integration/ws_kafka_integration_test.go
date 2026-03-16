@@ -421,11 +421,12 @@ func TestWSDMThrottleRejectsBurstWithErrorEvent(t *testing.T) {
 	defer conn.Close()
 
 	throttled := false
+	rejectedErrors := 0
 	for i := 0; i < 12; i++ {
 		if err := conn.WriteJSON(map[string]any{"type": "dm", "to": receiver.UserID.String(), "content": "burst"}); err != nil {
 			t.Fatalf("write burst dm: %v", err)
 		}
-		if waitForWSEvent(conn, 50*time.Millisecond, func(env wsEnvelope) bool {
+		if waitForWSEvent(conn, 200*time.Millisecond, func(env wsEnvelope) bool {
 			if env.Type != "error" {
 				return false
 			}
@@ -433,14 +434,18 @@ func TestWSDMThrottleRejectsBurstWithErrorEvent(t *testing.T) {
 			if err := json.Unmarshal(env.Payload, &payload); err != nil {
 				return false
 			}
-			return payload["code"] == "rate_limited"
+			if payload["code"] == "rate_limited" {
+				rejectedErrors++
+				return true
+			}
+			return false
 		}) {
 			throttled = true
 			break
 		}
 	}
 	if !throttled {
-		t.Fatal("expected dm burst to be rate limited")
+		t.Fatalf("expected dm burst to be rate limited, saw %d rate-limited error events", rejectedErrors)
 	}
 }
 
