@@ -43,6 +43,10 @@ func (p loopbackPublisher) Publish(ctx context.Context, topic, _ string, evt kaf
 }
 
 func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
+	return BuildRealtimeLoopbackAppWithThrottle(pool, handler.NewWSThrottleConfig(5, 10, 2, 4, 10, 20, 5, 10))
+}
+
+func BuildRealtimeLoopbackAppWithThrottle(pool *pgxpool.Pool, throttle handler.WSThrottleConfig) *RealtimeApp {
 	userRepo := repository.NewUserRepo(pool)
 	roomRepo := repository.NewRoomRepo(pool)
 	msgRepo := repository.NewMessageRepo(pool)
@@ -54,7 +58,7 @@ func BuildRealtimeLoopbackApp(pool *pgxpool.Pool) *RealtimeApp {
 	presenceSvc := service.NewPresenceService(publisher, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, publisher, presenceSvc)
-	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, nil, nil)
+	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, nil, nil, throttle)
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
@@ -124,7 +128,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 	presenceSvc := service.NewPresenceService(producer, h, userRepo)
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
-	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, nil)
+	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, nil, handler.NewWSThrottleConfig(5, 10, 2, 4, 10, 20, 5, 10))
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
