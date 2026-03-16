@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/poyrazk/cloudtalk/internal/handler"
 	"github.com/poyrazk/cloudtalk/internal/model"
 	"github.com/poyrazk/cloudtalk/internal/testutil/itest"
 )
@@ -402,6 +403,103 @@ func TestWSDMTypingSelfIgnored(t *testing.T) {
 	}
 	if got := waitForWSEvent(conn, 500*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "typing_dm" }); got {
 		t.Fatal("self typing_dm should not produce events")
+	}
+}
+
+func TestWSDMThrottleRejectsBurstWithErrorEvent(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackAppWithThrottle(env.Pool, handler.NewWSThrottleConfig(1, 1, 10, 10, 10, 10, 10, 10))
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	sender := registerAndLogin(t, ts.URL, "throttle-dm-sender")
+	receiver := registerAndLogin(t, ts.URL, "throttle-dm-receiver")
+
+	conn := wsDial(t, ts.URL, sender.AccessToken)
+	defer conn.Close()
+
+	throttled := false
+	for i := 0; i < 12; i++ {
+		if err := conn.WriteJSON(map[string]any{"type": "dm", "to": receiver.UserID.String(), "content": "burst"}); err != nil {
+			t.Fatalf("write burst dm: %v", err)
+		}
+		if waitForWSEvent(conn, 50*time.Millisecond, func(env wsEnvelope) bool {
+			if env.Type != "error" {
+				return false
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(env.Payload, &payload); err != nil {
+				return false
+			}
+			return payload["code"] == "rate_limited"
+		}) {
+			throttled = true
+			break
+		}
+	}
+	if !throttled {
+		t.Fatal("expected dm burst to be rate limited")
+	}
+}
+
+func TestWSTypingThrottleDropsBurstSilently(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	app := itest.BuildRealtimeLoopbackAppWithThrottle(env.Pool, handler.NewWSThrottleConfig(10, 10, 1, 1, 10, 10, 10, 10))
+	t.Cleanup(app.Close)
+
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	u1 := registerAndLogin(t, ts.URL, "throttle-typing-alice")
+	u2 := registerAndLogin(t, ts.URL, "throttle-typing-bob")
+
+	createRoomResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", u1.AccessToken, map[string]string{
+		"name":        "typing-throttle-room",
+		"description": "integration",
+	})
+	if createRoomResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createRoomResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createRoomResp)
+
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", u2.AccessToken, nil)
+	if joinResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
+	}
+
+	c1 := wsDial(t, ts.URL, u1.AccessToken)
+	defer c1.Close()
+	c2 := wsDial(t, ts.URL, u2.AccessToken)
+	defer c2.Close()
+
+	for _, c := range []*websocket.Conn{c1, c2} {
+		if err := c.WriteJSON(map[string]string{"type": "join_room", "room_id": room.ID.String()}); err != nil {
+			t.Fatalf("join_room send: %v", err)
+		}
+	}
+
+	typingEvents := 0
+	for i := 0; i < 8; i++ {
+		if err := c1.WriteJSON(map[string]any{"type": "typing", "room_id": room.ID.String(), "typing": true}); err != nil {
+			t.Fatalf("typing write: %v", err)
+		}
+		if waitForWSEvent(c2, 40*time.Millisecond, func(env wsEnvelope) bool {
+			if env.Type != "typing" {
+				return false
+			}
+			typingEvents++
+			return true
+		}) {
+		}
+	}
+
+	if typingEvents >= 8 {
+		t.Fatalf("expected some typing events to be dropped, got %d", typingEvents)
+	}
+	if got := waitForWSEvent(c1, 150*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "error" }); got {
+		t.Fatal("typing throttle should not emit error event")
 	}
 }
 
