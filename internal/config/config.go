@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -21,6 +22,14 @@ type Config struct {
 	TracingSampleRatio    float64
 	TracingServiceName    string
 	TracingServiceVersion string
+	WSChatRPS             float64
+	WSChatBurst           int
+	WSTypingRPS           float64
+	WSTypingBurst         int
+	WSReadRPS             float64
+	WSReadBurst           int
+	WSRoomRPS             float64
+	WSRoomBurst           int
 	Port                  string
 	DatabaseDSN           string
 	DBMaxConns            int32
@@ -44,6 +53,14 @@ func Load() *Config {
 		TracingSampleRatio:    getEnvFloat64("OTEL_TRACES_SAMPLER_ARG", 0.1),
 		TracingServiceName:    getEnv("OTEL_SERVICE_NAME", "cloudtalk"),
 		TracingServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
+		WSChatRPS:             getEnvFloat64("WS_CHAT_RPS", 5),
+		WSChatBurst:           getEnvInt("WS_CHAT_BURST", 10),
+		WSTypingRPS:           getEnvFloat64("WS_TYPING_RPS", 2),
+		WSTypingBurst:         getEnvInt("WS_TYPING_BURST", 4),
+		WSReadRPS:             getEnvFloat64("WS_READ_RPS", 10),
+		WSReadBurst:           getEnvInt("WS_READ_BURST", 20),
+		WSRoomRPS:             getEnvFloat64("WS_ROOM_RPS", 5),
+		WSRoomBurst:           getEnvInt("WS_ROOM_BURST", 10),
 		Port:                  getEnv("PORT", "8080"),
 		DatabaseDSN:           getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
 		DBMaxConns:            getEnvInt32("DB_MAX_CONNS", 20),
@@ -123,7 +140,28 @@ func validateNumericEnvConfig() []string {
 	issues = append(issues, validateRawPositiveInt("JWT_EXP_MINUTES", 1<<30-1)...)
 	issues = append(issues, validateRawPositiveInt("REFRESH_EXP_DAYS", 1<<30-1)...)
 	issues = append(issues, validateRawPositiveInt("AUTH_RATE_LIMIT_RPM", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveFloat("WS_CHAT_RPS")...)
+	issues = append(issues, validateRawPositiveInt("WS_CHAT_BURST", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveFloat("WS_TYPING_RPS")...)
+	issues = append(issues, validateRawPositiveInt("WS_TYPING_BURST", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveFloat("WS_READ_RPS")...)
+	issues = append(issues, validateRawPositiveInt("WS_READ_BURST", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveFloat("WS_ROOM_RPS")...)
+	issues = append(issues, validateRawPositiveInt("WS_ROOM_BURST", 1<<30-1)...)
 	return issues
+}
+
+func validateRawPositiveFloat(key string) []string {
+	if v, ok := os.LookupEnv(key); ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return []string{key + " must be a valid float"}
+		}
+		if math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 {
+			return []string{key + " must be a finite float greater than 0"}
+		}
+	}
+	return nil
 }
 
 func (c *Config) validateBaseConfig() []string {

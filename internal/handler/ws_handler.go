@@ -17,6 +17,7 @@ import (
 	"github.com/poyrazk/cloudtalk/internal/service"
 	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/time/rate"
 )
 
 // incomingMsg is the JSON envelope sent by the client over WebSocket.
@@ -44,6 +45,24 @@ type WSHandler struct {
 	messages *service.MessageService
 	presence *service.PresenceService
 	producer *kafka.Producer
+	throttle WSThrottleConfig
+}
+
+type WSThrottleConfig struct {
+	client hub.ThrottleConfig
+}
+
+func NewWSThrottleConfig(chatRPS float64, chatBurst int, typingRPS float64, typingBurst int, readRPS float64, readBurst int, roomRPS float64, roomBurst int) WSThrottleConfig {
+	return WSThrottleConfig{client: hub.ThrottleConfig{
+		ChatRate:    rate.Limit(chatRPS),
+		ChatBurst:   chatBurst,
+		TypingRate:  rate.Limit(typingRPS),
+		TypingBurst: typingBurst,
+		ReadRate:    rate.Limit(readRPS),
+		ReadBurst:   readBurst,
+		RoomRate:    rate.Limit(roomRPS),
+		RoomBurst:   roomBurst,
+	}}
 }
 
 func NewWSHandler(
@@ -54,6 +73,7 @@ func NewWSHandler(
 	presence *service.PresenceService,
 	producer *kafka.Producer,
 	allowedOrigins []string,
+	throttle WSThrottleConfig,
 ) *WSHandler {
 	u := websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -79,6 +99,7 @@ func NewWSHandler(
 		messages: messages,
 		presence: presence,
 		producer: producer,
+		throttle: throttle,
 	}
 }
 
@@ -101,7 +122,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := hub.NewClient(userID)
+	client := hub.NewClient(userID, h.throttle.client)
 	h.hub.Register(client)
 	metrics.ActiveWSConnections.Inc()
 	metrics.WSConnectionsTotal.WithLabelValues("connect").Inc()
@@ -117,10 +138,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
-	writeWait  = 10 * time.Second
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
-	maxMsgSize = 4096
+	writeWait         = 10 * time.Second
+	pongWait          = 60 * time.Second
+	pingPeriod        = (pongWait * 9) / 10
+	maxMsgSize        = 4096
+	rejectSendTimeout = 100 * time.Millisecond
 )
 
 func (h *WSHandler) readPump(ctx context.Context, conn *websocket.Conn, client *hub.Client) {
@@ -187,6 +209,11 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 		return
 	}
 	span.SetAttributes(attribute.String("ws.message_type", msg.Type))
+	allowed, action := h.allowClientMessage(client, msg.Type)
+	if !allowed {
+		h.handleThrottledEvent(ctx, client, msg.Type, action)
+		return
+	}
 
 	switch msg.Type {
 	case "join_room":
@@ -228,6 +255,63 @@ func (h *WSHandler) handleClientMessage(ctx context.Context, client *hub.Client,
 
 	case "typing_dm":
 		h.handleDMTyping(ctx, client, msg)
+	}
+}
+
+func (h *WSHandler) allowClientMessage(client *hub.Client, msgType string) (bool, string) {
+	switch msgType {
+	case "typing", "typing_dm":
+		if !client.Allow(hub.GroupTyping) {
+			return false, "drop"
+		}
+	case "message", "dm", "edit_message", "delete_message", "edit_dm", "delete_dm":
+		if !client.Allow(hub.GroupChat) {
+			return false, "reject"
+		}
+	case "read_dm", "read_room":
+		if !client.Allow(hub.GroupRead) {
+			return false, "reject"
+		}
+	case "join_room", "leave_room":
+		if !client.Allow(hub.GroupRoom) {
+			return false, "reject"
+		}
+	}
+	return true, ""
+}
+
+func (h *WSHandler) handleThrottledEvent(ctx context.Context, client *hub.Client, msgType, action string) {
+	metrics.WSThrottledEventsTotal.WithLabelValues(msgType, action).Inc()
+	slog.Warn("ws: client event throttled",
+		"user_id", client.UserID,
+		"message_type", msgType,
+		"action", action,
+		"trace_id", apptrace.TraceIDFromContext(ctx),
+	)
+	if action == "drop" {
+		return
+	}
+	payload, err := json.Marshal(map[string]string{
+		"code":    "rate_limited",
+		"message": "too many websocket events",
+	})
+	if err != nil {
+		slog.Error("ws: marshal throttled error payload", "err", err)
+		return
+	}
+	data, err := json.Marshal(outgoingMsg{Type: "error", Payload: payload})
+	if err != nil {
+		slog.Error("ws: marshal throttled error event", "err", err)
+		return
+	}
+	select {
+	case client.Send <- hub.Event{Data: data}:
+	case <-time.After(rejectSendTimeout):
+		slog.Warn("ws: throttled reject response timed out",
+			"user_id", client.UserID,
+			"message_type", msgType,
+			"trace_id", apptrace.TraceIDFromContext(ctx),
+		)
 	}
 }
 

@@ -97,7 +97,7 @@ func run() error {
 	authH := handler.NewAuthHandler(auth)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
-	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, cfg.AllowedOrigins)
+	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, cfg.AllowedOrigins, handler.NewWSThrottleConfig(cfg.WSChatRPS, cfg.WSChatBurst, cfg.WSTypingRPS, cfg.WSTypingBurst, cfg.WSReadRPS, cfg.WSReadBurst, cfg.WSRoomRPS, cfg.WSRoomBurst))
 
 	r := buildRouter(cfg, auth, authH, roomH, dmH, wsH, pool, producer, consumer)
 	return serveHTTP(cfg, r)

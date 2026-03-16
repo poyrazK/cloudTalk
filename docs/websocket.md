@@ -16,6 +16,11 @@ After a successful upgrade, the client must send `join_room` for each room it wa
 
 All messages are JSON text frames.
 
+The server applies per-connection throttling to inbound WebSocket events.
+
+- `typing` and `typing_dm` bursts are dropped silently when throttled
+- message send, read, and room subscription bursts receive an `error` event with code `rate_limited`
+
 ### join_room
 Subscribe to messages in a room.
 ```json
@@ -182,6 +187,15 @@ A user came online or went offline.
 {
   "type": "presence",
   "payload": { "user_id": "<uuid>", "status": "online" }
+}
+```
+
+### error
+Structured server-side rejection for invalid or throttled realtime actions.
+```json
+{
+  "type": "error",
+  "payload": { "code": "rate_limited", "message": "too many websocket events" }
 }
 ```
 
