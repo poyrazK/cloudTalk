@@ -495,6 +495,9 @@ func TestWSTypingThrottleDropsBurstSilently(t *testing.T) {
 	if typingEvents >= 8 {
 		t.Fatalf("expected some typing events to be dropped, got %d", typingEvents)
 	}
+	if typingEvents == 0 {
+		t.Fatal("expected typing fanout before throttling, got zero delivered typing events")
+	}
 	if got := waitForWSEvent(c1, 150*time.Millisecond, func(env wsEnvelope) bool { return env.Type == "error" }); got {
 		t.Fatal("typing throttle should not emit error event")
 	}
