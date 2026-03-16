@@ -18,6 +18,11 @@ var (
 		Help: "Total WebSocket connection lifecycle events.",
 	}, []string{"event"}) // event: connect | disconnect
 
+	WSThrottledEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_ws_throttled_events_total",
+		Help: "Total throttled WebSocket client events.",
+	}, []string{"type", "action"}) // action: drop | reject
+
 	KafkaPublishTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "cloudtalk_kafka_publish_total",
 		Help: "Total Kafka messages published.",
