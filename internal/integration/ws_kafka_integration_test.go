@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/poyrazk/cloudtalk/internal/handler"
 	"github.com/poyrazk/cloudtalk/internal/model"
@@ -406,25 +407,25 @@ func TestWSDMTypingSelfIgnored(t *testing.T) {
 	}
 }
 
-func TestWSDMThrottleRejectsBurstWithErrorEvent(t *testing.T) {
+func TestWSRoomSubscriptionThrottleRejectsBurstWithErrorEvent(t *testing.T) {
 	env := itest.Start(t, itest.EnvOptions{})
-	app := itest.BuildRealtimeLoopbackAppWithThrottle(env.Pool, handler.NewWSThrottleConfig(1, 1, 10, 10, 10, 10, 10, 10))
+	app := itest.BuildRealtimeLoopbackAppWithThrottle(env.Pool, handler.NewWSThrottleConfig(10, 10, 10, 10, 10, 10, 1, 1))
 	t.Cleanup(app.Close)
 
 	ts := httptest.NewServer(app.Router)
 	t.Cleanup(ts.Close)
 
-	sender := registerAndLogin(t, ts.URL, "throttle-dm-sender")
-	receiver := registerAndLogin(t, ts.URL, "throttle-dm-receiver")
+	user := registerAndLogin(t, ts.URL, "throttle-room-join-user")
 
-	conn := wsDial(t, ts.URL, sender.AccessToken)
+	conn := wsDial(t, ts.URL, user.AccessToken)
 	defer conn.Close()
 
 	throttled := false
 	rejectedErrors := 0
+	roomID := model.Room{ID: uuid.New()}.ID.String()
 	for i := 0; i < 12; i++ {
-		if err := conn.WriteJSON(map[string]any{"type": "dm", "to": receiver.UserID.String(), "content": "burst"}); err != nil {
-			t.Fatalf("write burst dm: %v", err)
+		if err := conn.WriteJSON(map[string]any{"type": "join_room", "room_id": roomID}); err != nil {
+			t.Fatalf("write burst join_room: %v", err)
 		}
 		if waitForWSEvent(conn, 200*time.Millisecond, func(env wsEnvelope) bool {
 			if env.Type != "error" {
@@ -445,7 +446,7 @@ func TestWSDMThrottleRejectsBurstWithErrorEvent(t *testing.T) {
 		}
 	}
 	if !throttled {
-		t.Fatalf("expected dm burst to be rate limited, saw %d rate-limited error events", rejectedErrors)
+		t.Fatalf("expected join_room burst to be rate limited, saw %d rate-limited error events", rejectedErrors)
 	}
 }
 
