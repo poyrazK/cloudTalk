@@ -22,12 +22,14 @@ type roomRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.Room, error)
 	AddMember(ctx context.Context, roomID, userID uuid.UUID) error
+	AddMemberWithRole(ctx context.Context, roomID, userID uuid.UUID, role string) error
 	InitRoomReadState(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
 	MarkRoomRead(ctx context.Context, roomID, userID uuid.UUID, at time.Time) error
 	ListRoomUnreadCounts(ctx context.Context, userID uuid.UUID) ([]*model.RoomUnreadCount, error)
 	ListRoomConversationHeads(ctx context.Context, userID uuid.UUID, limit int) ([]*model.RoomConversationHead, error)
 	ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 	ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error)
+	GetMemberRole(ctx context.Context, roomID, userID uuid.UUID) (string, error)
 	RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error
 	IsMember(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 }
@@ -55,7 +57,7 @@ func (s *RoomService) Create(ctx context.Context, name, description string, crea
 		return nil, fmt.Errorf("create room: %w", err)
 	}
 	// Creator automatically joins
-	_ = s.rooms.AddMember(ctx, room.ID, createdBy)
+	_ = s.rooms.AddMemberWithRole(ctx, room.ID, createdBy, model.RoomRoleOwner)
 	_ = s.rooms.InitRoomReadState(ctx, room.ID, createdBy, time.Now().UTC())
 	return room, nil
 }
@@ -195,4 +197,28 @@ func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.R
 		}
 	}
 	return members, nil
+}
+
+func (s *RoomService) RemoveMemberAsOwner(ctx context.Context, roomID, actorID, targetUserID uuid.UUID) error {
+	if actorID == targetUserID {
+		return errors.New("bad request: use leave to remove yourself from a room")
+	}
+	actorRole, err := s.rooms.GetMemberRole(ctx, roomID, actorID)
+	if err != nil {
+		return fmt.Errorf("load actor role: %w", err)
+	}
+	if actorRole != model.RoomRoleOwner {
+		return errors.New("forbidden: only room owner can remove members")
+	}
+	targetRole, err := s.rooms.GetMemberRole(ctx, roomID, targetUserID)
+	if err != nil {
+		return fmt.Errorf("load target role: %w", err)
+	}
+	if targetRole == model.RoomRoleOwner {
+		return errors.New("bad request: room owner cannot be removed")
+	}
+	if err := s.rooms.RemoveMember(ctx, roomID, targetUserID); err != nil {
+		return fmt.Errorf("remove room member: %w", err)
+	}
+	return nil
 }
