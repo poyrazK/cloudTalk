@@ -27,6 +27,14 @@ func (r *RoomRepo) Create(ctx context.Context, room *model.Room) error {
 	return nil
 }
 
+func (r *RoomRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM rooms WHERE id=$1`, id)
+	if err != nil {
+		return fmt.Errorf("delete room: %w", err)
+	}
+	return nil
+}
+
 func (r *RoomRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
 	room := &model.Room{}
 	err := r.db.QueryRow(ctx,

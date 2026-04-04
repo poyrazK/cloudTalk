@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -89,7 +90,11 @@ func (h *RoomHandler) Leave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.rooms.Leave(r.Context(), id, userID); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrRoomBadRequestOwnerCannotLeave) {
+			status = http.StatusBadRequest
+		}
+		jsonError(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -175,10 +180,10 @@ func (h *RoomHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.rooms.RemoveMemberAsOwner(r.Context(), roomID, actorID, targetUserID); err != nil {
 		status := http.StatusInternalServerError
-		switch err.Error() {
-		case "forbidden: only room owner can remove members":
+		switch {
+		case errors.Is(err, service.ErrRoomModerationForbidden):
 			status = http.StatusForbidden
-		case "bad request: use leave to remove yourself from a room", "bad request: room owner cannot be removed", "bad request: target user is not a room member":
+		case errors.Is(err, service.ErrRoomBadRequestUseLeave), errors.Is(err, service.ErrRoomBadRequestOwnerCannotBeRemoved), errors.Is(err, service.ErrRoomBadRequestTargetNotMember):
 			status = http.StatusBadRequest
 		}
 		jsonError(w, err.Error(), status)

@@ -29,7 +29,7 @@ type fakeRoomRepo struct {
 	conversationResp     []*model.RoomConversationHead
 	memberIDsByRoom      map[uuid.UUID][]uuid.UUID
 	listMembersResp      []*model.RoomMemberDetail
-	rolesByUser          map[uuid.UUID]string
+	rolesByRoom          map[uuid.UUID]map[uuid.UUID]string
 	removedRoomID        uuid.UUID
 	removedUserID        uuid.UUID
 	listByUserResp       []*model.Room
@@ -42,6 +42,8 @@ func (f *fakeRoomRepo) Create(_ context.Context, room *model.Room) error {
 	f.createdRoom = room
 	return nil
 }
+
+func (f *fakeRoomRepo) Delete(_ context.Context, _ uuid.UUID) error { return nil }
 
 func (f *fakeRoomRepo) GetByID(_ context.Context, id uuid.UUID) (*model.Room, error) {
 	if f.getErr != nil {
@@ -69,10 +71,13 @@ func (f *fakeRoomRepo) AddMemberWithRole(_ context.Context, roomID, userID uuid.
 	}
 	f.addedRoomID = roomID
 	f.addedUserID = userID
-	if f.rolesByUser == nil {
-		f.rolesByUser = map[uuid.UUID]string{}
+	if f.rolesByRoom == nil {
+		f.rolesByRoom = map[uuid.UUID]map[uuid.UUID]string{}
 	}
-	f.rolesByUser[userID] = role
+	if f.rolesByRoom[roomID] == nil {
+		f.rolesByRoom[roomID] = map[uuid.UUID]string{}
+	}
+	f.rolesByRoom[roomID][userID] = role
 	return nil
 }
 
@@ -112,8 +117,12 @@ func (f *fakeRoomRepo) ListRoomMembers(_ context.Context, _ uuid.UUID) ([]*model
 	return f.listMembersResp, nil
 }
 
-func (f *fakeRoomRepo) GetMemberRole(_ context.Context, _, userID uuid.UUID) (string, error) {
-	role, ok := f.rolesByUser[userID]
+func (f *fakeRoomRepo) GetMemberRole(_ context.Context, roomID, userID uuid.UUID) (string, error) {
+	roomRoles, ok := f.rolesByRoom[roomID]
+	if !ok {
+		return "", errors.New("missing role")
+	}
+	role, ok := roomRoles[userID]
 	if !ok {
 		return "", errors.New("missing role")
 	}
@@ -161,8 +170,8 @@ func TestRoomServiceCreateAutoAddsCreator(t *testing.T) {
 	if repo.addedRoomID != room.ID || repo.addedUserID != uid {
 		t.Fatal("expected creator to be auto-added")
 	}
-	if repo.rolesByUser[uid] != model.RoomRoleOwner {
-		t.Fatalf("expected creator role owner, got %q", repo.rolesByUser[uid])
+	if repo.rolesByRoom[room.ID][uid] != model.RoomRoleOwner {
+		t.Fatalf("expected creator role owner, got %q", repo.rolesByRoom[room.ID][uid])
 	}
 	if repo.initReadRoomID != room.ID || repo.initReadUserID != uid {
 		t.Fatal("expected creator read state to be initialized")
@@ -214,6 +223,7 @@ func TestRoomServiceLeaveDelegates(t *testing.T) {
 	svc := NewRoomService(repo)
 	rid := uuid.New()
 	uid := uuid.New()
+	repo.rolesByRoom = map[uuid.UUID]map[uuid.UUID]string{rid: {uid: model.RoomRoleMember}}
 
 	if err := svc.Leave(context.Background(), rid, uid); err != nil {
 		t.Fatalf("leave failed: %v", err)
@@ -291,9 +301,9 @@ func TestRoomServiceRemoveMemberAsOwner(t *testing.T) {
 
 	ownerID := uuid.New()
 	memberID := uuid.New()
-	repo := &fakeRoomRepo{isMember: true, rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
-	svc := NewRoomService(repo)
 	roomID := uuid.New()
+	repo := &fakeRoomRepo{rolesByRoom: map[uuid.UUID]map[uuid.UUID]string{roomID: {ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}}
+	svc := NewRoomService(repo)
 
 	if err := svc.RemoveMemberAsOwner(context.Background(), roomID, ownerID, memberID); err != nil {
 		t.Fatalf("remove member failed: %v", err)
@@ -308,9 +318,9 @@ func TestRoomServiceRemoveMemberAsOwnerRejectsNonOwnerAndOwnerRemoval(t *testing
 
 	ownerID := uuid.New()
 	memberID := uuid.New()
-	repo := &fakeRoomRepo{isMember: true, rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
-	svc := NewRoomService(repo)
 	roomID := uuid.New()
+	repo := &fakeRoomRepo{rolesByRoom: map[uuid.UUID]map[uuid.UUID]string{roomID: {ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}}
+	svc := NewRoomService(repo)
 
 	if err := svc.RemoveMemberAsOwner(context.Background(), roomID, memberID, ownerID); err == nil {
 		t.Fatal("expected non-owner moderation failure")

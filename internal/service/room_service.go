@@ -7,9 +7,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/poyrazk/cloudtalk/internal/model"
 	apptrace "github.com/poyrazk/cloudtalk/internal/tracing"
 	"go.opentelemetry.io/otel/attribute"
+)
+
+var (
+	ErrRoomModerationForbidden            = errors.New("forbidden: only room owner can remove members")
+	ErrRoomBadRequestUseLeave             = errors.New("bad request: use leave to remove yourself from a room")
+	ErrRoomBadRequestOwnerCannotBeRemoved = errors.New("bad request: room owner cannot be removed")
+	ErrRoomBadRequestTargetNotMember      = errors.New("bad request: target user is not a room member")
+	ErrRoomBadRequestOwnerCannotLeave     = errors.New("bad request: room owner cannot leave without transferring ownership")
 )
 
 type RoomService struct {
@@ -19,6 +28,7 @@ type RoomService struct {
 
 type roomRepository interface {
 	Create(ctx context.Context, room *model.Room) error
+	Delete(ctx context.Context, id uuid.UUID) error
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.Room, error)
 	AddMember(ctx context.Context, roomID, userID uuid.UUID) error
@@ -56,10 +66,20 @@ func (s *RoomService) Create(ctx context.Context, name, description string, crea
 	if err := s.rooms.Create(ctx, room); err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
 	}
-	// Creator automatically joins
-	_ = s.rooms.AddMemberWithRole(ctx, room.ID, createdBy, model.RoomRoleOwner)
-	_ = s.rooms.InitRoomReadState(ctx, room.ID, createdBy, time.Now().UTC())
+	if err := s.rooms.AddMemberWithRole(ctx, room.ID, createdBy, model.RoomRoleOwner); err != nil {
+		return nil, s.rollbackRoomCreate(ctx, room.ID, fmt.Errorf("add owner membership: %w", err))
+	}
+	if err := s.rooms.InitRoomReadState(ctx, room.ID, createdBy, time.Now().UTC()); err != nil {
+		return nil, s.rollbackRoomCreate(ctx, room.ID, fmt.Errorf("init owner read state: %w", err))
+	}
 	return room, nil
+}
+
+func (s *RoomService) rollbackRoomCreate(ctx context.Context, roomID uuid.UUID, cause error) error {
+	if err := s.rooms.Delete(ctx, roomID); err != nil {
+		return fmt.Errorf("%w: rollback room create: %v", cause, err)
+	}
+	return cause
 }
 
 func (s *RoomService) Get(ctx context.Context, id uuid.UUID) (*model.Room, error) {
@@ -92,6 +112,13 @@ func (s *RoomService) Join(ctx context.Context, roomID, userID uuid.UUID) error 
 }
 
 func (s *RoomService) Leave(ctx context.Context, roomID, userID uuid.UUID) error {
+	role, err := s.rooms.GetMemberRole(ctx, roomID, userID)
+	if err != nil {
+		return fmt.Errorf("load member role for leave: %w", err)
+	}
+	if role == model.RoomRoleOwner {
+		return ErrRoomBadRequestOwnerCannotLeave
+	}
 	if err := s.rooms.RemoveMember(ctx, roomID, userID); err != nil {
 		return fmt.Errorf("leave room: %w", err)
 	}
@@ -201,35 +228,27 @@ func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.R
 
 func (s *RoomService) RemoveMemberAsOwner(ctx context.Context, roomID, actorID, targetUserID uuid.UUID) error {
 	if actorID == targetUserID {
-		return errors.New("bad request: use leave to remove yourself from a room")
-	}
-	actorIsMember, err := s.rooms.IsMember(ctx, roomID, actorID)
-	if err != nil {
-		return fmt.Errorf("check actor membership: %w", err)
-	}
-	if !actorIsMember {
-		return errors.New("forbidden: only room owner can remove members")
+		return ErrRoomBadRequestUseLeave
 	}
 	actorRole, err := s.rooms.GetMemberRole(ctx, roomID, actorID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRoomModerationForbidden
+		}
 		return fmt.Errorf("load actor role: %w", err)
 	}
 	if actorRole != model.RoomRoleOwner {
-		return errors.New("forbidden: only room owner can remove members")
-	}
-	targetIsMember, err := s.rooms.IsMember(ctx, roomID, targetUserID)
-	if err != nil {
-		return fmt.Errorf("check target membership: %w", err)
-	}
-	if !targetIsMember {
-		return errors.New("bad request: target user is not a room member")
+		return ErrRoomModerationForbidden
 	}
 	targetRole, err := s.rooms.GetMemberRole(ctx, roomID, targetUserID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRoomBadRequestTargetNotMember
+		}
 		return fmt.Errorf("load target role: %w", err)
 	}
 	if targetRole == model.RoomRoleOwner {
-		return errors.New("bad request: room owner cannot be removed")
+		return ErrRoomBadRequestOwnerCannotBeRemoved
 	}
 	if err := s.rooms.RemoveMember(ctx, roomID, targetUserID); err != nil {
 		return fmt.Errorf("remove room member: %w", err)

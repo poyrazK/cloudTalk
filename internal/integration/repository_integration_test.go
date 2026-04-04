@@ -408,11 +408,15 @@ func TestRepositoryRoomMemberRolesIntegration(t *testing.T) {
 	if len(members) != 2 {
 		t.Fatalf("expected 2 members, got %d", len(members))
 	}
-	if members[0].UserID != owner.ID || members[0].Role != model.RoomRoleOwner {
-		t.Fatalf("unexpected first member row: %+v", members[0])
+	rolesByUser := map[uuid.UUID]string{}
+	for _, m := range members {
+		rolesByUser[m.UserID] = m.Role
 	}
-	if members[1].UserID != member.ID || members[1].Role != model.RoomRoleMember {
-		t.Fatalf("unexpected second member row: %+v", members[1])
+	if rolesByUser[owner.ID] != model.RoomRoleOwner {
+		t.Fatalf("unexpected owner role in members list: %+v", rolesByUser)
+	}
+	if rolesByUser[member.ID] != model.RoomRoleMember {
+		t.Fatalf("unexpected member role in members list: %+v", rolesByUser)
 	}
 }
 
