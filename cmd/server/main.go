@@ -195,19 +195,30 @@ func buildRouter(cfg *config.Config, auth *authsvc.Service, authH *handler.AuthH
 		r.Group(func(r chi.Router) {
 			r.Use(authsvc.Middleware(auth))
 
-			r.Post("/rooms", roomH.Create)
-			r.Get("/rooms", roomH.List)
-			r.Get("/rooms/conversations", roomH.Conversations)
-			r.Get("/rooms/unread-counts", roomH.UnreadCounts)
-			r.Get("/rooms/{id}", roomH.Get)
-			r.Post("/rooms/{id}/join", roomH.Join)
-			r.Post("/rooms/{id}/leave", roomH.Leave)
-			r.Get("/rooms/{id}/members", roomH.Members)
-			r.Get("/rooms/{id}/messages", roomH.Messages)
+			r.Group(func(r chi.Router) {
+				r.Use(handler.AuthenticatedRateLimit("room_actions", cfg.HTTPRoomActionRPM))
+				r.Post("/rooms", roomH.Create)
+				r.Post("/rooms/{id}/join", roomH.Join)
+				r.Post("/rooms/{id}/leave", roomH.Leave)
+			})
 
-			r.Get("/dms/{userId}/messages", dmH.Messages)
-			r.Get("/dms/unread-counts", dmH.UnreadCounts)
-			r.Get("/dms/conversations", dmH.Conversations)
+			r.Group(func(r chi.Router) {
+				r.Use(handler.AuthenticatedRateLimit("conversation_reads", cfg.HTTPConversationReadRPM))
+				r.Get("/rooms/conversations", roomH.Conversations)
+				r.Get("/rooms/unread-counts", roomH.UnreadCounts)
+				r.Get("/dms/unread-counts", dmH.UnreadCounts)
+				r.Get("/dms/conversations", dmH.Conversations)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(handler.AuthenticatedRateLimit("message_history_reads", cfg.HTTPMessageHistoryRPM))
+				r.Get("/rooms/{id}/messages", roomH.Messages)
+				r.Get("/dms/{userId}/messages", dmH.Messages)
+			})
+
+			r.Get("/rooms", roomH.List)
+			r.Get("/rooms/{id}", roomH.Get)
+			r.Get("/rooms/{id}/members", roomH.Members)
 		})
 	})
 

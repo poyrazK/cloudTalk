@@ -71,6 +71,11 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"method", "path", "status"})
 
+	HTTPThrottledRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cloudtalk_http_throttled_requests_total",
+		Help: "Total throttled HTTP requests.",
+	}, []string{"group", "scope"})
+
 	DBPoolConnections = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cloudtalk_db_pool_connections",
 		Help: "Database pool connection counts.",

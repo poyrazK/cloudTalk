@@ -16,64 +16,70 @@ const (
 )
 
 type Config struct {
-	AppEnv                string
-	TracingEnabled        bool
-	TracingEndpoint       string
-	TracingSampleRatio    float64
-	TracingServiceName    string
-	TracingServiceVersion string
-	WSChatRPS             float64
-	WSChatBurst           int
-	WSTypingRPS           float64
-	WSTypingBurst         int
-	WSReadRPS             float64
-	WSReadBurst           int
-	WSRoomRPS             float64
-	WSRoomBurst           int
-	Port                  string
-	DatabaseDSN           string
-	DBMaxConns            int32
-	DBMinConns            int32
-	DBMaxConnLife         int // seconds
-	DBMaxConnIdle         int // seconds
-	KafkaBrokers          []string
-	KafkaGroupID          string
-	JWTSecret             string
-	JWTExpMinutes         int
-	RefreshExpDays        int
-	AllowedOrigins        []string
-	RateLimit             int
+	AppEnv                  string
+	TracingEnabled          bool
+	TracingEndpoint         string
+	TracingSampleRatio      float64
+	TracingServiceName      string
+	TracingServiceVersion   string
+	WSChatRPS               float64
+	WSChatBurst             int
+	WSTypingRPS             float64
+	WSTypingBurst           int
+	WSReadRPS               float64
+	WSReadBurst             int
+	WSRoomRPS               float64
+	WSRoomBurst             int
+	HTTPConversationReadRPM int
+	HTTPMessageHistoryRPM   int
+	HTTPRoomActionRPM       int
+	Port                    string
+	DatabaseDSN             string
+	DBMaxConns              int32
+	DBMinConns              int32
+	DBMaxConnLife           int // seconds
+	DBMaxConnIdle           int // seconds
+	KafkaBrokers            []string
+	KafkaGroupID            string
+	JWTSecret               string
+	JWTExpMinutes           int
+	RefreshExpDays          int
+	AllowedOrigins          []string
+	RateLimit               int
 }
 
 func Load() *Config {
 	return &Config{
-		AppEnv:                getEnv("APP_ENV", EnvDev),
-		TracingEnabled:        getEnvBool("TRACING_ENABLED", false),
-		TracingEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
-		TracingSampleRatio:    getEnvFloat64("OTEL_TRACES_SAMPLER_ARG", 0.1),
-		TracingServiceName:    getEnv("OTEL_SERVICE_NAME", "cloudtalk"),
-		TracingServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
-		WSChatRPS:             getEnvFloat64("WS_CHAT_RPS", 5),
-		WSChatBurst:           getEnvInt("WS_CHAT_BURST", 10),
-		WSTypingRPS:           getEnvFloat64("WS_TYPING_RPS", 2),
-		WSTypingBurst:         getEnvInt("WS_TYPING_BURST", 4),
-		WSReadRPS:             getEnvFloat64("WS_READ_RPS", 10),
-		WSReadBurst:           getEnvInt("WS_READ_BURST", 20),
-		WSRoomRPS:             getEnvFloat64("WS_ROOM_RPS", 5),
-		WSRoomBurst:           getEnvInt("WS_ROOM_BURST", 10),
-		Port:                  getEnv("PORT", "8080"),
-		DatabaseDSN:           getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
-		DBMaxConns:            getEnvInt32("DB_MAX_CONNS", 20),
-		DBMinConns:            getEnvInt32("DB_MIN_CONNS", 2),
-		DBMaxConnLife:         getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
-		DBMaxConnIdle:         getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
-		KafkaBrokers:          splitCSV(getEnv("KAFKA_BROKERS", "localhost:9092")),
-		KafkaGroupID:          getEnv("KAFKA_GROUP_ID", hostnameOrDefault("cloudtalk")),
-		JWTSecret:             getEnv("JWT_SECRET", "change-me-in-production"),
-		JWTExpMinutes:         getEnvInt("JWT_EXP_MINUTES", 15),
-		RefreshExpDays:        getEnvInt("REFRESH_EXP_DAYS", 7),
-		AllowedOrigins:        splitCSV(getEnv("ALLOWED_ORIGINS", "")),
-		RateLimit:             getEnvInt("AUTH_RATE_LIMIT_RPM", 20),
+		AppEnv:                  getEnv("APP_ENV", EnvDev),
+		TracingEnabled:          getEnvBool("TRACING_ENABLED", false),
+		TracingEndpoint:         getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+		TracingSampleRatio:      getEnvFloat64("OTEL_TRACES_SAMPLER_ARG", 0.1),
+		TracingServiceName:      getEnv("OTEL_SERVICE_NAME", "cloudtalk"),
+		TracingServiceVersion:   getEnv("OTEL_SERVICE_VERSION", "dev"),
+		WSChatRPS:               getEnvFloat64("WS_CHAT_RPS", 5),
+		WSChatBurst:             getEnvInt("WS_CHAT_BURST", 10),
+		WSTypingRPS:             getEnvFloat64("WS_TYPING_RPS", 2),
+		WSTypingBurst:           getEnvInt("WS_TYPING_BURST", 4),
+		WSReadRPS:               getEnvFloat64("WS_READ_RPS", 10),
+		WSReadBurst:             getEnvInt("WS_READ_BURST", 20),
+		WSRoomRPS:               getEnvFloat64("WS_ROOM_RPS", 5),
+		WSRoomBurst:             getEnvInt("WS_ROOM_BURST", 10),
+		HTTPConversationReadRPM: getEnvInt("HTTP_CONVERSATION_READ_RPM", 120),
+		HTTPMessageHistoryRPM:   getEnvInt("HTTP_MESSAGE_HISTORY_RPM", 180),
+		HTTPRoomActionRPM:       getEnvInt("HTTP_ROOM_ACTION_RPM", 30),
+		Port:                    getEnv("PORT", "8080"),
+		DatabaseDSN:             getEnv("DATABASE_DSN", "postgres://postgres:postgres@localhost:5432/cloudtalk?sslmode=disable"),
+		DBMaxConns:              getEnvInt32("DB_MAX_CONNS", 20),
+		DBMinConns:              getEnvInt32("DB_MIN_CONNS", 2),
+		DBMaxConnLife:           getEnvInt("DB_MAX_CONN_LIFE_SECS", 3600),
+		DBMaxConnIdle:           getEnvInt("DB_MAX_CONN_IDLE_SECS", 300),
+		KafkaBrokers:            splitCSV(getEnv("KAFKA_BROKERS", "localhost:9092")),
+		KafkaGroupID:            getEnv("KAFKA_GROUP_ID", hostnameOrDefault("cloudtalk")),
+		JWTSecret:               getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpMinutes:           getEnvInt("JWT_EXP_MINUTES", 15),
+		RefreshExpDays:          getEnvInt("REFRESH_EXP_DAYS", 7),
+		AllowedOrigins:          splitCSV(getEnv("ALLOWED_ORIGINS", "")),
+		RateLimit:               getEnvInt("AUTH_RATE_LIMIT_RPM", 20),
 	}
 }
 
@@ -148,6 +154,9 @@ func validateNumericEnvConfig() []string {
 	issues = append(issues, validateRawPositiveInt("WS_READ_BURST", 1<<30-1)...)
 	issues = append(issues, validateRawPositiveFloat("WS_ROOM_RPS")...)
 	issues = append(issues, validateRawPositiveInt("WS_ROOM_BURST", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("HTTP_CONVERSATION_READ_RPM", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("HTTP_MESSAGE_HISTORY_RPM", 1<<30-1)...)
+	issues = append(issues, validateRawPositiveInt("HTTP_ROOM_ACTION_RPM", 1<<30-1)...)
 	return issues
 }
 
