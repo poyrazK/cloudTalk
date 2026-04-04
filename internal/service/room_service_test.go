@@ -291,7 +291,7 @@ func TestRoomServiceRemoveMemberAsOwner(t *testing.T) {
 
 	ownerID := uuid.New()
 	memberID := uuid.New()
-	repo := &fakeRoomRepo{rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
+	repo := &fakeRoomRepo{isMember: true, rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
 	svc := NewRoomService(repo)
 	roomID := uuid.New()
 
@@ -308,7 +308,7 @@ func TestRoomServiceRemoveMemberAsOwnerRejectsNonOwnerAndOwnerRemoval(t *testing
 
 	ownerID := uuid.New()
 	memberID := uuid.New()
-	repo := &fakeRoomRepo{rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
+	repo := &fakeRoomRepo{isMember: true, rolesByUser: map[uuid.UUID]string{ownerID: model.RoomRoleOwner, memberID: model.RoomRoleMember}}
 	svc := NewRoomService(repo)
 	roomID := uuid.New()
 
@@ -317,5 +317,10 @@ func TestRoomServiceRemoveMemberAsOwnerRejectsNonOwnerAndOwnerRemoval(t *testing
 	}
 	if err := svc.RemoveMemberAsOwner(context.Background(), roomID, ownerID, ownerID); err == nil {
 		t.Fatal("expected self-remove moderation failure")
+	}
+
+	outsiderID := uuid.New()
+	if err := svc.RemoveMemberAsOwner(context.Background(), roomID, outsiderID, memberID); err == nil {
+		t.Fatal("expected outsider moderation failure")
 	}
 }

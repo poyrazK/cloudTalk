@@ -203,12 +203,26 @@ func (s *RoomService) RemoveMemberAsOwner(ctx context.Context, roomID, actorID, 
 	if actorID == targetUserID {
 		return errors.New("bad request: use leave to remove yourself from a room")
 	}
+	actorIsMember, err := s.rooms.IsMember(ctx, roomID, actorID)
+	if err != nil {
+		return fmt.Errorf("check actor membership: %w", err)
+	}
+	if !actorIsMember {
+		return errors.New("forbidden: only room owner can remove members")
+	}
 	actorRole, err := s.rooms.GetMemberRole(ctx, roomID, actorID)
 	if err != nil {
 		return fmt.Errorf("load actor role: %w", err)
 	}
 	if actorRole != model.RoomRoleOwner {
 		return errors.New("forbidden: only room owner can remove members")
+	}
+	targetIsMember, err := s.rooms.IsMember(ctx, roomID, targetUserID)
+	if err != nil {
+		return fmt.Errorf("check target membership: %w", err)
+	}
+	if !targetIsMember {
+		return errors.New("bad request: target user is not a room member")
 	}
 	targetRole, err := s.rooms.GetMemberRole(ctx, roomID, targetUserID)
 	if err != nil {

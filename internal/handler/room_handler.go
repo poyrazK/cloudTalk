@@ -178,7 +178,7 @@ func (h *RoomHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		switch err.Error() {
 		case "forbidden: only room owner can remove members":
 			status = http.StatusForbidden
-		case "bad request: use leave to remove yourself from a room", "bad request: room owner cannot be removed":
+		case "bad request: use leave to remove yourself from a room", "bad request: room owner cannot be removed", "bad request: target user is not a room member":
 			status = http.StatusBadRequest
 		}
 		jsonError(w, err.Error(), status)
