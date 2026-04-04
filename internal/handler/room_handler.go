@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -89,7 +90,11 @@ func (h *RoomHandler) Leave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.rooms.Leave(r.Context(), id, userID); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrRoomBadRequestOwnerCannotLeave) {
+			status = http.StatusBadRequest
+		}
+		jsonError(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -158,6 +163,33 @@ func (h *RoomHandler) Members(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResp(w, http.StatusOK, members)
+}
+
+func (h *RoomHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := authsvc.UserIDFromContext(r.Context())
+	roomID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		jsonError(w, "invalid room id", http.StatusBadRequest)
+		return
+	}
+	targetUserID, err := uuid.Parse(chi.URLParam(r, "userId"))
+	if err != nil {
+		jsonError(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.rooms.RemoveMemberAsOwner(r.Context(), roomID, actorID, targetUserID); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, service.ErrRoomModerationForbidden):
+			status = http.StatusForbidden
+		case errors.Is(err, service.ErrRoomBadRequestUseLeave), errors.Is(err, service.ErrRoomBadRequestOwnerCannotBeRemoved), errors.Is(err, service.ErrRoomBadRequestTargetNotMember):
+			status = http.StatusBadRequest
+		}
+		jsonError(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *RoomHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {

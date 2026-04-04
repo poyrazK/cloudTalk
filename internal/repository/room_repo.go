@@ -27,6 +27,14 @@ func (r *RoomRepo) Create(ctx context.Context, room *model.Room) error {
 	return nil
 }
 
+func (r *RoomRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM rooms WHERE id=$1`, id)
+	if err != nil {
+		return fmt.Errorf("delete room: %w", err)
+	}
+	return nil
+}
+
 func (r *RoomRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
 	room := &model.Room{}
 	err := r.db.QueryRow(ctx,
@@ -70,6 +78,18 @@ func (r *RoomRepo) AddMember(ctx context.Context, roomID, userID uuid.UUID) erro
 	)
 	if err != nil {
 		return fmt.Errorf("add room member: %w", err)
+	}
+	return nil
+}
+
+func (r *RoomRepo) AddMemberWithRole(ctx context.Context, roomID, userID uuid.UUID, role string) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO room_members (room_id, user_id, role) VALUES ($1,$2,$3)
+		 ON CONFLICT (room_id, user_id) DO NOTHING`,
+		roomID, userID, role,
+	)
+	if err != nil {
+		return fmt.Errorf("add room member with role: %w", err)
 	}
 	return nil
 }
@@ -227,7 +247,7 @@ func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (
 
 func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT rm.user_id, u.username, rm.joined_at, u.last_seen_at
+		`SELECT rm.user_id, u.username, rm.role, rm.joined_at, u.last_seen_at
 		 FROM room_members rm
 		 JOIN users u ON u.id = rm.user_id
 		 WHERE rm.room_id = $1
@@ -243,7 +263,7 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 	for rows.Next() {
 		member := &model.RoomMemberDetail{}
 		var lastSeen pgtype.Timestamptz
-		if err := rows.Scan(&member.UserID, &member.Username, &member.JoinedAt, &lastSeen); err != nil {
+		if err := rows.Scan(&member.UserID, &member.Username, &member.Role, &member.JoinedAt, &lastSeen); err != nil {
 			return nil, fmt.Errorf("scan room member detail row: %w", err)
 		}
 		if lastSeen.Valid {
@@ -256,6 +276,17 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 		return nil, fmt.Errorf("iterate room member detail rows: %w", err)
 	}
 	return members, nil
+}
+
+func (r *RoomRepo) GetMemberRole(ctx context.Context, roomID, userID uuid.UUID) (string, error) {
+	var role string
+	if err := r.db.QueryRow(ctx,
+		`SELECT role FROM room_members WHERE room_id = $1 AND user_id = $2`,
+		roomID, userID,
+	).Scan(&role); err != nil {
+		return "", fmt.Errorf("get room member role: %w", err)
+	}
+	return role, nil
 }
 
 func (r *RoomRepo) RemoveMember(ctx context.Context, roomID, userID uuid.UUID) error {

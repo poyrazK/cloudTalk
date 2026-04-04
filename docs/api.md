@@ -139,6 +139,7 @@ Only room members can access this endpoint. Non-members receive `403`.
   {
     "user_id": "<uuid>",
     "username": "alice",
+    "role": "owner",
     "joined_at": "...",
     "last_seen": null,
     "online": true
@@ -150,6 +151,25 @@ Presence semantics:
 
 - `online=true` implies `last_seen=null`
 - `online=false` may include the latest persisted `last_seen`
+
+Role semantics:
+
+- room creator is `owner`
+- joined users are `member`
+
+---
+
+### POST /rooms/:id/members/:userId/remove
+Remove a room member.
+
+Only the room owner can remove members.
+
+Rules:
+
+- owner cannot be removed
+- use `POST /rooms/:id/leave` for self-removal
+
+**Response** `204`
 
 ---
 

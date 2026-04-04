@@ -454,17 +454,70 @@ func TestRoomMembersIntegration(t *testing.T) {
 		byID[m.UserID] = m
 	}
 	ownerMember, ok := byID[owner.UserID]
-	if !ok || ownerMember.Username != "room-members-owner" || !ownerMember.Online || ownerMember.JoinedAt.IsZero() || ownerMember.LastSeen != nil {
+	if !ok || ownerMember.Username != "room-members-owner" || ownerMember.Role != model.RoomRoleOwner || !ownerMember.Online || ownerMember.JoinedAt.IsZero() || ownerMember.LastSeen != nil {
 		t.Fatalf("unexpected owner member row: %+v", ownerMember)
 	}
 	joinedMember, ok := byID[member.UserID]
-	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
+	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Role != model.RoomRoleMember || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
 		t.Fatalf("unexpected joined member row: %+v", joinedMember)
 	}
 
 	forbiddenResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members", outsider.AccessToken, nil)
 	if forbiddenResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("room members outsider status: got=%d", forbiddenResp.StatusCode)
+	}
+}
+
+func TestRoomOwnerCanRemoveMemberIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+	app := itest.BuildHTTPApp(env.Pool)
+	ts := httptest.NewServer(app.Router)
+	t.Cleanup(ts.Close)
+
+	owner := registerAndLogin(t, ts.URL, "room-remove-owner")
+	member := registerAndLogin(t, ts.URL, "room-remove-member")
+	outsider := registerAndLogin(t, ts.URL, "room-remove-outsider")
+
+	createResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms", owner.AccessToken, map[string]string{
+		"name":        "room-remove",
+		"description": "integration",
+	})
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create room status: got=%d", createResp.StatusCode)
+	}
+	room := decodeJSON[model.Room](t, createResp)
+
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", member.AccessToken, nil)
+	if joinResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
+	}
+
+	forbiddenResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members/"+member.UserID.String()+"/remove", outsider.AccessToken, nil)
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("outsider remove status: got=%d", forbiddenResp.StatusCode)
+	}
+
+	badOwnerResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members/"+owner.UserID.String()+"/remove", owner.AccessToken, nil)
+	if badOwnerResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("owner remove owner status: got=%d", badOwnerResp.StatusCode)
+	}
+
+	removeResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members/"+member.UserID.String()+"/remove", owner.AccessToken, nil)
+	if removeResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("owner remove member status: got=%d", removeResp.StatusCode)
+	}
+
+	membersResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/members", owner.AccessToken, nil)
+	if membersResp.StatusCode != http.StatusOK {
+		t.Fatalf("members status after remove: got=%d", membersResp.StatusCode)
+	}
+	members := decodeJSON[[]model.RoomMemberDetail](t, membersResp)
+	if len(members) != 1 || members[0].UserID != owner.UserID || members[0].Role != model.RoomRoleOwner {
+		t.Fatalf("unexpected members after remove: %+v", members)
 	}
 }
 

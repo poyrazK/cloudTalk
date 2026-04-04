@@ -118,10 +118,29 @@ API:
 Member semantics:
 
 - endpoint is accessible only to current room members
-- each row includes `user_id`, `username`, `joined_at`, `online`, and `last_seen`
+- each row includes `user_id`, `username`, `role`, `joined_at`, `online`, and `last_seen`
 - `online` is a presence snapshot at request time
 - `online=true` implies `last_seen=null`
 - `online=false` may include the latest persisted `last_seen`
+
+## Room roles and moderation
+
+Room membership currently supports two roles:
+
+- `owner`
+- `member`
+
+Role semantics:
+
+- room creator is the initial `owner`
+- joined users default to `member`
+- only the owner can remove another member
+- the owner cannot be removed through moderation
+- self-removal should use the normal leave endpoint
+
+API:
+
+- `POST /api/v1/rooms/:id/members/:userId/remove`
 
 ## Conversation list (DM)
 

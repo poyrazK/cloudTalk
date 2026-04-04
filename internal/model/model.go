@@ -6,6 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	RoomRoleOwner  = "owner"
+	RoomRoleMember = "member"
+)
+
 type User struct {
 	ID           uuid.UUID  `db:"id"            json:"id"`
 	Username     string     `db:"username"      json:"username"`
@@ -26,12 +31,14 @@ type Room struct {
 type RoomMember struct {
 	RoomID   uuid.UUID `db:"room_id"  json:"room_id"`
 	UserID   uuid.UUID `db:"user_id"  json:"user_id"`
+	Role     string    `db:"role"     json:"role"`
 	JoinedAt time.Time `db:"joined_at" json:"joined_at"`
 }
 
 type RoomMemberDetail struct {
 	UserID   uuid.UUID  `db:"user_id"   json:"user_id"`
 	Username string     `db:"username"  json:"username"`
+	Role     string     `db:"role"      json:"role"`
 	JoinedAt time.Time  `db:"joined_at" json:"joined_at"`
 	LastSeen *time.Time `db:"last_seen_at" json:"last_seen"`
 	Online   bool       `json:"online"`
