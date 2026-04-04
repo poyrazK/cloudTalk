@@ -77,7 +77,7 @@ func (s *RoomService) Create(ctx context.Context, name, description string, crea
 
 func (s *RoomService) rollbackRoomCreate(ctx context.Context, roomID uuid.UUID, cause error) error {
 	if err := s.rooms.Delete(ctx, roomID); err != nil {
-		return fmt.Errorf("%w: rollback room create: %v", cause, err)
+		return fmt.Errorf("%w (rollback room create: %v)", cause, err)
 	}
 	return cause
 }
