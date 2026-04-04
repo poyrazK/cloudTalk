@@ -368,6 +368,54 @@ func TestRepositoryRoomConversationHeadsIntegration(t *testing.T) {
 	}
 }
 
+func TestRepositoryRoomMemberRolesIntegration(t *testing.T) {
+	env := itest.Start(t, itest.EnvOptions{})
+	ctx := context.Background()
+	if err := env.ResetDB(ctx); err != nil {
+		t.Fatalf("reset db: %v", err)
+	}
+
+	userRepo := repository.NewUserRepo(env.Pool)
+	roomRepo := repository.NewRoomRepo(env.Pool)
+
+	owner := &model.User{ID: uuid.New(), Username: "owner-role", Email: fmt.Sprintf("owner-role-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	member := &model.User{ID: uuid.New(), Username: "member-role", Email: fmt.Sprintf("member-role-%s@example.com", uuid.NewString()), PasswordHash: "hash"}
+	for _, u := range []*model.User{owner, member} {
+		if err := userRepo.Create(ctx, u); err != nil {
+			t.Fatalf("create user %s: %v", u.Username, err)
+		}
+	}
+
+	room := &model.Room{ID: uuid.New(), Name: "room-role", Description: "roles", CreatedBy: owner.ID}
+	if err := roomRepo.Create(ctx, room); err != nil {
+		t.Fatalf("create room: %v", err)
+	}
+	if err := roomRepo.AddMemberWithRole(ctx, room.ID, owner.ID, model.RoomRoleOwner); err != nil {
+		t.Fatalf("add owner with role: %v", err)
+	}
+	if err := roomRepo.AddMember(ctx, room.ID, member.ID); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	ownerRole, err := roomRepo.GetMemberRole(ctx, room.ID, owner.ID)
+	if err != nil || ownerRole != model.RoomRoleOwner {
+		t.Fatalf("unexpected owner role: %q err=%v", ownerRole, err)
+	}
+	members, err := roomRepo.ListRoomMembers(ctx, room.ID)
+	if err != nil {
+		t.Fatalf("list room members: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+	if members[0].UserID != owner.ID || members[0].Role != model.RoomRoleOwner {
+		t.Fatalf("unexpected first member row: %+v", members[0])
+	}
+	if members[1].UserID != member.ID || members[1].Role != model.RoomRoleMember {
+		t.Fatalf("unexpected second member row: %+v", members[1])
+	}
+}
+
 func insertMessageAt(t *testing.T, env *itest.Env, roomID, senderID uuid.UUID, content string, createdAt time.Time) {
 	t.Helper()
 	_, err := env.Pool.Exec(context.Background(),
