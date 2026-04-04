@@ -8,15 +8,20 @@ WHERE r.id = rm.room_id
   AND r.created_by = rm.user_id;
 
 WITH ownerless_rooms AS (
-  SELECT rm.room_id, MIN(rm.user_id) AS promoted_user_id
-  FROM room_members rm
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM room_members existing_owner
-    WHERE existing_owner.room_id = rm.room_id
-      AND existing_owner.role = 'owner'
-  )
-  GROUP BY rm.room_id
+  SELECT room_id, user_id AS promoted_user_id
+  FROM (
+    SELECT rm.room_id,
+           rm.user_id,
+           ROW_NUMBER() OVER (PARTITION BY rm.room_id ORDER BY rm.joined_at ASC, rm.user_id ASC) AS row_num
+    FROM room_members rm
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM room_members existing_owner
+      WHERE existing_owner.room_id = rm.room_id
+        AND existing_owner.role = 'owner'
+    )
+  ) ranked_members
+  WHERE row_num = 1
 )
 UPDATE room_members rm
 SET role = 'owner'
