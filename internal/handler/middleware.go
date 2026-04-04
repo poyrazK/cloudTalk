@@ -15,8 +15,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// ipRateLimiter holds per-IP token bucket limiters.
-type ipRateLimiter struct {
+// keyedRateLimiter holds token bucket limiters keyed by an arbitrary string.
+type keyedRateLimiter struct {
 	mu       sync.Mutex
 	limiters map[string]*entry
 	rpm      int
@@ -27,21 +27,6 @@ type entry struct {
 	lastSeen time.Time
 }
 
-type keyedRateLimiter struct {
-	mu       sync.Mutex
-	limiters map[string]*entry
-	rpm      int
-}
-
-func newIPRateLimiter(rpm int) *ipRateLimiter {
-	rl := &ipRateLimiter{
-		limiters: make(map[string]*entry),
-		rpm:      rpm,
-	}
-	go rl.cleanup()
-	return rl
-}
-
 func newKeyedRateLimiter(rpm int) *keyedRateLimiter {
 	rl := &keyedRateLimiter{
 		limiters: make(map[string]*entry),
@@ -49,24 +34,6 @@ func newKeyedRateLimiter(rpm int) *keyedRateLimiter {
 	}
 	go rl.cleanup()
 	return rl
-}
-
-func (rl *ipRateLimiter) get(ip string) *rate.Limiter {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	e, ok := rl.limiters[ip]
-	if !ok {
-		// Allow rpm requests per minute with a burst of rpm/4 (min 1).
-		burst := rl.rpm / 4
-		if burst < 1 {
-			burst = 1
-		}
-		lim := rate.NewLimiter(rate.Every(time.Minute/time.Duration(rl.rpm)), burst)
-		e = &entry{limiter: lim}
-		rl.limiters[ip] = e
-	}
-	e.lastSeen = time.Now()
-	return e.limiter
 }
 
 func (rl *keyedRateLimiter) get(key string) *rate.Limiter {
@@ -84,20 +51,6 @@ func (rl *keyedRateLimiter) get(key string) *rate.Limiter {
 	}
 	e.lastSeen = time.Now()
 	return e.limiter
-}
-
-// cleanup removes stale entries every 5 minutes.
-func (rl *ipRateLimiter) cleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
-	for range ticker.C {
-		rl.mu.Lock()
-		for ip, e := range rl.limiters {
-			if time.Since(e.lastSeen) > 10*time.Minute {
-				delete(rl.limiters, ip)
-			}
-		}
-		rl.mu.Unlock()
-	}
 }
 
 func (rl *keyedRateLimiter) cleanup() {
@@ -130,7 +83,7 @@ func RateLimit(rpm int) func(http.Handler) http.Handler {
 	if rpm <= 0 {
 		return func(next http.Handler) http.Handler { return next }
 	}
-	rl := newIPRateLimiter(rpm)
+	rl := newKeyedRateLimiter(rpm)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -138,7 +91,11 @@ func RateLimit(rpm int) func(http.Handler) http.Handler {
 				ip = r.RemoteAddr
 			}
 			if !rl.get(ip).Allow() {
-				http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				if err := json.NewEncoder(w).Encode(map[string]string{"error": "too many requests"}); err != nil {
+					slog.Error("http: write auth throttle response", "err", err)
+				}
 				return
 			}
 			next.ServeHTTP(w, r)
