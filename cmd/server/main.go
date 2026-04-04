@@ -200,6 +200,7 @@ func buildRouter(cfg *config.Config, auth *authsvc.Service, authH *handler.AuthH
 				r.Post("/rooms", roomH.Create)
 				r.Post("/rooms/{id}/join", roomH.Join)
 				r.Post("/rooms/{id}/leave", roomH.Leave)
+				r.Post("/rooms/{id}/members/{userId}/remove", roomH.RemoveMember)
 			})
 
 			r.Group(func(r chi.Router) {

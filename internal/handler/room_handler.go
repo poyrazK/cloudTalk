@@ -160,6 +160,33 @@ func (h *RoomHandler) Members(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, http.StatusOK, members)
 }
 
+func (h *RoomHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := authsvc.UserIDFromContext(r.Context())
+	roomID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		jsonError(w, "invalid room id", http.StatusBadRequest)
+		return
+	}
+	targetUserID, err := uuid.Parse(chi.URLParam(r, "userId"))
+	if err != nil {
+		jsonError(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.rooms.RemoveMemberAsOwner(r.Context(), roomID, actorID, targetUserID); err != nil {
+		status := http.StatusInternalServerError
+		switch err.Error() {
+		case "forbidden: only room owner can remove members":
+			status = http.StatusForbidden
+		case "bad request: use leave to remove yourself from a room", "bad request: room owner cannot be removed":
+			status = http.StatusBadRequest
+		}
+		jsonError(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *RoomHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 	userID, _ := authsvc.UserIDFromContext(r.Context())
 	counts, err := h.rooms.UnreadCounts(r.Context(), userID)
