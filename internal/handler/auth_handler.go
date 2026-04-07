@@ -30,7 +30,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	u, err := h.auth.Register(r.Context(), strings.TrimSpace(req.Username), strings.TrimSpace(req.Email), req.Password)
+	u, err := h.auth.Register(r.Context(), req.Username, strings.TrimSpace(req.Email), req.Password)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusConflict)
 		return
