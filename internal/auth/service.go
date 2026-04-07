@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -44,6 +45,8 @@ func NewService(users userStore, secret string, accessExpMin, refreshExpDays int
 
 // Register creates a new user and returns it.
 func (s *Service) Register(ctx context.Context, username, email, password string) (*model.User, error) {
+	username = strings.TrimSpace(username)
+	now := time.Now().UTC()
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -51,8 +54,11 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	u := &model.User{
 		ID:           uuid.New(),
 		Username:     username,
+		DisplayName:  username,
 		Email:        email,
 		PasswordHash: string(hash),
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	if err := s.users.Create(ctx, u); err != nil {
 		return nil, fmt.Errorf("register: %w", err)
