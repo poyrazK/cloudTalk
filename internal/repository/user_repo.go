@@ -27,30 +27,17 @@ func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
-	u := &model.User{}
-	var avatarURL pgtype.Text
-	err := r.db.QueryRow(ctx,
-		`SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE id=$1`, id,
-	).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-	if avatarURL.Valid {
-		u.AvatarURL = &avatarURL.String
-	}
-	if u.DisplayName == "" {
-		u.DisplayName = u.Username
-	}
-	return u, nil
+	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE id=$1`, id)
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE email=$1`, email)
+}
+
+func (r *UserRepo) getAndHydrateUser(ctx context.Context, query string, args ...any) (*model.User, error) {
 	u := &model.User{}
 	var avatarURL pgtype.Text
-	err := r.db.QueryRow(ctx,
-		`SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE email=$1`, email,
-	).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt)
-	if err != nil {
+	if err := r.db.QueryRow(ctx, query, args...).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 	if avatarURL.Valid {
