@@ -70,7 +70,7 @@ func (r *UserRepo) UpdateProfileFields(ctx context.Context, userID uuid.UUID, di
 	if avatarURL != nil {
 		paramNum := len(args) + 1
 		if *avatarURL == "" {
-			query += fmt.Sprintf(", avatar_url = NULL")
+			query += ", avatar_url = NULL"
 		} else {
 			query += fmt.Sprintf(", avatar_url = $%d", paramNum)
 			args = append(args, *avatarURL)
