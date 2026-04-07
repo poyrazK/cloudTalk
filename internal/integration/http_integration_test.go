@@ -36,6 +36,18 @@ func TestAuthLifecycleIntegration(t *testing.T) {
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register status: got=%d", registerResp.StatusCode)
 	}
+	var registered struct {
+		DisplayName string  `json:"display_name"`
+		AvatarURL   *string `json:"avatar_url"`
+		UpdatedAt   string  `json:"updated_at"`
+	}
+	decodeInto(t, registerResp, &registered)
+	if registered.DisplayName != "alice" || registered.AvatarURL != nil {
+		t.Fatalf("unexpected registered user profile: %+v", registered)
+	}
+	if registered.UpdatedAt == "" {
+		t.Fatal("expected registered user updated_at to be set")
+	}
 
 	loginResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/auth/login", "", map[string]string{
 		"email":    email,
@@ -89,24 +101,35 @@ func TestRoomAndDMHistoryAuthorizationIntegration(t *testing.T) {
 	if createRoomResp.StatusCode != http.StatusCreated {
 		t.Fatalf("create room status: got=%d", createRoomResp.StatusCode)
 	}
-	room := decodeJSON[model.Room](t, createRoomResp)
+	var room struct {
+		ID        string `json:"id"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	decodeInto(t, createRoomResp, &room)
+	if room.UpdatedAt == "" {
+		t.Fatal("expected room updated_at to be set")
+	}
+	roomID, err := uuid.Parse(room.ID)
+	if err != nil {
+		t.Fatalf("parse room id: %v", err)
+	}
 
-	forbiddenResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/messages", u2.AccessToken, nil)
+	forbiddenResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+roomID.String()+"/messages", u2.AccessToken, nil)
 	if forbiddenResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("non-member room history should be forbidden: got=%d", forbiddenResp.StatusCode)
 	}
 
-	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/join", u2.AccessToken, nil)
+	joinResp := doJSON(t, http.MethodPost, ts.URL+"/api/v1/rooms/"+roomID.String()+"/join", u2.AccessToken, nil)
 	if joinResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("join room status: got=%d", joinResp.StatusCode)
 	}
 
-	msg := &model.Message{ID: uuid.New(), RoomID: room.ID, SenderID: u1.UserID, Content: "hello room"}
+	msg := &model.Message{ID: uuid.New(), RoomID: roomID, SenderID: u1.UserID, Content: "hello room"}
 	if err := app.Rooms.SaveMessage(context.Background(), msg); err != nil {
 		t.Fatalf("save room message: %v", err)
 	}
 
-	historyResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+room.ID.String()+"/messages?limit=10", u2.AccessToken, nil)
+	historyResp := doJSON(t, http.MethodGet, ts.URL+"/api/v1/rooms/"+roomID.String()+"/messages?limit=10", u2.AccessToken, nil)
 	if historyResp.StatusCode != http.StatusOK {
 		t.Fatalf("room history status: got=%d", historyResp.StatusCode)
 	}
@@ -258,21 +281,47 @@ func TestDMConversationsIntegration(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("conversations status: got=%d", resp.StatusCode)
 	}
-	var convs []model.DMConversation
+	var convs []struct {
+		UserID      string  `json:"user_id"`
+		Username    string  `json:"username"`
+		DisplayName string  `json:"display_name"`
+		AvatarURL   *string `json:"avatar_url"`
+		Online      bool    `json:"online"`
+		LastSeen    *string `json:"last_seen"`
+		UnreadCount int     `json:"unread_count"`
+		LastMessage struct {
+			Content string `json:"content"`
+		} `json:"last_message"`
+	}
 	decodeInto(t, resp, &convs)
 	if len(convs) != 2 {
 		t.Fatalf("expected 2 conversations, got %d", len(convs))
 	}
-	got := map[uuid.UUID]model.DMConversation{}
+	got := map[uuid.UUID]struct {
+		UserID      string  `json:"user_id"`
+		Username    string  `json:"username"`
+		DisplayName string  `json:"display_name"`
+		AvatarURL   *string `json:"avatar_url"`
+		Online      bool    `json:"online"`
+		LastSeen    *string `json:"last_seen"`
+		UnreadCount int     `json:"unread_count"`
+		LastMessage struct {
+			Content string `json:"content"`
+		} `json:"last_message"`
+	}{}
 	for _, c := range convs {
-		got[c.UserID] = c
+		uid, err := uuid.Parse(c.UserID)
+		if err != nil {
+			t.Fatalf("parse conversation user id: %v", err)
+		}
+		got[uid] = c
 	}
 	convP1, ok := got[p1.UserID]
-	if !ok || convP1.LastMessage == nil || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" || !convP1.Online || convP1.LastSeen != nil {
+	if !ok || convP1.LastMessage.Content != "latest-p1" || convP1.Username != "conv-p1" || convP1.DisplayName != "conv-p1" || convP1.AvatarURL != nil || !convP1.Online || convP1.LastSeen != nil {
 		t.Fatalf("unexpected p1 conversation: %+v", convP1)
 	}
 	convP2, ok := got[p2.UserID]
-	if !ok || convP2.LastMessage == nil || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" || convP2.Online || convP2.LastSeen == nil {
+	if !ok || convP2.LastMessage.Content != "latest-p2" || convP2.Username != "conv-p2" || convP2.DisplayName != "conv-p2" || convP2.AvatarURL != nil || convP2.Online || convP2.LastSeen == nil {
 		t.Fatalf("unexpected p2 conversation: %+v", convP2)
 	}
 }
@@ -454,11 +503,11 @@ func TestRoomMembersIntegration(t *testing.T) {
 		byID[m.UserID] = m
 	}
 	ownerMember, ok := byID[owner.UserID]
-	if !ok || ownerMember.Username != "room-members-owner" || ownerMember.Role != model.RoomRoleOwner || !ownerMember.Online || ownerMember.JoinedAt.IsZero() || ownerMember.LastSeen != nil {
+	if !ok || ownerMember.Username != "room-members-owner" || ownerMember.DisplayName != "room-members-owner" || ownerMember.AvatarURL != nil || ownerMember.Role != model.RoomRoleOwner || !ownerMember.Online || ownerMember.JoinedAt.IsZero() || ownerMember.LastSeen != nil {
 		t.Fatalf("unexpected owner member row: %+v", ownerMember)
 	}
 	joinedMember, ok := byID[member.UserID]
-	if !ok || joinedMember.Username != "room-members-member" || joinedMember.Role != model.RoomRoleMember || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
+	if !ok || joinedMember.Username != "room-members-member" || joinedMember.DisplayName != "room-members-member" || joinedMember.AvatarURL != nil || joinedMember.Role != model.RoomRoleMember || joinedMember.Online || joinedMember.JoinedAt.IsZero() {
 		t.Fatalf("unexpected joined member row: %+v", joinedMember)
 	}
 
