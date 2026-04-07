@@ -27,18 +27,28 @@ func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
-	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE id=$1`, id)
+	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE id=$1`, id, true)
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
-	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE email=$1`, email)
+	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE email=$1`, email, true)
 }
 
-func (r *UserRepo) getAndHydrateUser(ctx context.Context, query string, args ...any) (*model.User, error) {
+func (r *UserRepo) GetPublicProfileByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
+	return r.getAndHydrateUser(ctx, `SELECT id, username, display_name, avatar_url, last_seen_at FROM users WHERE id=$1`, id, false)
+}
+
+func (r *UserRepo) getAndHydrateUser(ctx context.Context, query string, arg any, full bool) (*model.User, error) {
 	u := &model.User{}
 	var avatarURL pgtype.Text
-	if err := r.db.QueryRow(ctx, query, args...).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
+	if full {
+		if err := r.db.QueryRow(ctx, query, arg).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("user not found: %w", err)
+		}
+	} else {
+		if err := r.db.QueryRow(ctx, query, arg).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.LastSeenAt); err != nil {
+			return nil, fmt.Errorf("user not found: %w", err)
+		}
 	}
 	if avatarURL.Valid {
 		u.AvatarURL = &avatarURL.String
@@ -47,6 +57,32 @@ func (r *UserRepo) getAndHydrateUser(ctx context.Context, query string, args ...
 		u.DisplayName = u.Username
 	}
 	return u, nil
+}
+
+func (r *UserRepo) UpdateProfileFields(ctx context.Context, userID uuid.UUID, displayName *string, avatarURL *string) error {
+	args := []any{userID}
+	query := "UPDATE users SET updated_at = NOW()"
+
+	if displayName != nil {
+		query += ", display_name = $2"
+		args = append(args, *displayName)
+	}
+	if avatarURL != nil {
+		paramNum := len(args) + 1
+		if *avatarURL == "" {
+			query += ", avatar_url = NULL"
+		} else {
+			query += fmt.Sprintf(", avatar_url = $%d", paramNum)
+			args = append(args, *avatarURL)
+		}
+	}
+	query += " WHERE id = $1"
+
+	_, err := r.db.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update user profile: %w", err)
+	}
+	return nil
 }
 
 // --- Refresh tokens ---

@@ -2,18 +2,25 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
+	"github.com/poyrazk/cloudtalk/internal/repository"
 )
 
 type AuthHandler struct {
-	auth *authsvc.Service
+	auth     *authsvc.Service
+	userRepo *repository.UserRepo
 }
 
-func NewAuthHandler(auth *authsvc.Service) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth *authsvc.Service, userRepo *repository.UserRepo) *AuthHandler {
+	return &AuthHandler{auth: auth, userRepo: userRepo}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +91,65 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.auth.Logout(r.Context(), req.RefreshToken)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, _ := authsvc.UserIDFromContext(r.Context())
+	u, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("me: get user", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, authUserResponseFromModel(u))
+}
+
+func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	userID, _ := authsvc.UserIDFromContext(r.Context())
+	var req UpdateMeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := h.userRepo.UpdateProfileFields(r.Context(), userID, req.DisplayName, req.AvatarURL); err != nil {
+		slog.Error("update me: update profile", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	u, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("update me: get user", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, authUserResponseFromModel(u))
+}
+
+func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		jsonError(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+	u, err := h.userRepo.GetPublicProfileByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("get user: lookup", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	jsonResp(w, http.StatusOK, publicProfileResponseFromModel(u))
 }
 
 // --- helpers ---

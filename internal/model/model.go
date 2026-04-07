@@ -23,6 +23,16 @@ type User struct {
 	UpdatedAt    time.Time  `db:"updated_at"   json:"updated_at"`
 }
 
+func (u *User) DisplayNameOrUsername() string {
+	if u == nil || u.DisplayName == "" {
+		if u == nil {
+			return ""
+		}
+		return u.Username
+	}
+	return u.DisplayName
+}
+
 type Room struct {
 	ID          uuid.UUID `db:"id"          json:"id"`
 	Name        string    `db:"name"        json:"name"`
