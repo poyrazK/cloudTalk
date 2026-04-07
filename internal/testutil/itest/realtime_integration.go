@@ -59,7 +59,7 @@ func BuildRealtimeLoopbackAppWithThrottle(pool *pgxpool.Pool, throttle handler.W
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, publisher, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, nil, nil, throttle)
-	authH := handler.NewAuthHandler(auth)
+	authH := handler.NewAuthHandler(auth, userRepo)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
 
@@ -75,6 +75,9 @@ func BuildRealtimeLoopbackAppWithThrottle(pool *pgxpool.Pool, throttle handler.W
 
 		r.Group(func(r chi.Router) {
 			r.Use(authsvc.Middleware(auth))
+			r.Get("/me", authH.Me)
+			r.Patch("/me", authH.UpdateMe)
+			r.Get("/users/{id}", authH.GetUser)
 			r.Post("/rooms", roomH.Create)
 			r.Get("/rooms", roomH.List)
 			r.Get("/rooms/conversations", roomH.Conversations)
@@ -130,7 +133,7 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, producer, presenceSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, nil, handler.NewWSThrottleConfig(5, 10, 2, 4, 10, 20, 5, 10))
-	authH := handler.NewAuthHandler(auth)
+	authH := handler.NewAuthHandler(auth, userRepo)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
 
@@ -159,6 +162,9 @@ func BuildRealtimeApp(env *Env) (*RealtimeApp, error) {
 
 		r.Group(func(r chi.Router) {
 			r.Use(authsvc.Middleware(auth))
+			r.Get("/me", authH.Me)
+			r.Patch("/me", authH.UpdateMe)
+			r.Get("/users/{id}", authH.GetUser)
 			r.Post("/rooms", roomH.Create)
 			r.Get("/rooms", roomH.List)
 			r.Get("/rooms/conversations", roomH.Conversations)

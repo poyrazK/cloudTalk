@@ -39,7 +39,7 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 	roomSvc := service.NewRoomServiceWithPresence(roomRepo, presenceSvc)
 	msgSvc := service.NewMessageServiceWithPresence(roomRepo, msgRepo, userRepo, nilPublisher{}, presenceSvc)
 
-	authH := handler.NewAuthHandler(auth)
+	authH := handler.NewAuthHandler(auth, userRepo)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
 
@@ -55,6 +55,9 @@ func BuildHTTPApp(pool *pgxpool.Pool) *App {
 
 		r.Group(func(r chi.Router) {
 			r.Use(authsvc.Middleware(auth))
+			r.Get("/me", authH.Me)
+			r.Patch("/me", authH.UpdateMe)
+			r.Get("/users/{id}", authH.GetUser)
 			r.Post("/rooms", roomH.Create)
 			r.Get("/rooms", roomH.List)
 			r.Get("/rooms/conversations", roomH.Conversations)

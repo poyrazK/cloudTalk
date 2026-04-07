@@ -94,7 +94,7 @@ func run() error {
 	startDBPoolMetrics(consumerCtx, pool)
 
 	// --- Handlers ---
-	authH := handler.NewAuthHandler(auth)
+	authH := handler.NewAuthHandler(auth, userRepo)
 	roomH := handler.NewRoomHandler(roomSvc, msgSvc)
 	dmH := handler.NewDMHandler(msgSvc)
 	wsH := handler.NewWSHandler(auth, h, roomSvc, msgSvc, presenceSvc, producer, cfg.AllowedOrigins, handler.NewWSThrottleConfig(cfg.WSChatRPS, cfg.WSChatBurst, cfg.WSTypingRPS, cfg.WSTypingBurst, cfg.WSReadRPS, cfg.WSReadBurst, cfg.WSRoomRPS, cfg.WSRoomBurst))
@@ -194,6 +194,10 @@ func buildRouter(cfg *config.Config, auth *authsvc.Service, authH *handler.AuthH
 
 		r.Group(func(r chi.Router) {
 			r.Use(authsvc.Middleware(auth))
+
+			r.Get("/me", authH.Me)
+			r.Patch("/me", authH.UpdateMe)
+			r.Get("/users/{id}", authH.GetUser)
 
 			r.Group(func(r chi.Router) {
 				r.Use(handler.AuthenticatedRateLimit("room_actions", cfg.HTTPRoomActionRPM))
