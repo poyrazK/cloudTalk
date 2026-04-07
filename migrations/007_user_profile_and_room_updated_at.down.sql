@@ -1,0 +1,7 @@
+ALTER TABLE rooms
+  DROP COLUMN IF EXISTS updated_at;
+
+ALTER TABLE users
+  DROP COLUMN IF EXISTS updated_at,
+  DROP COLUMN IF EXISTS avatar_url,
+  DROP COLUMN IF EXISTS display_name;

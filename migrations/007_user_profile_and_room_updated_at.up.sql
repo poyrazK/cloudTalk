@@ -1,0 +1,14 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS display_name TEXT,
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT NULL,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+UPDATE users
+SET display_name = username
+WHERE display_name IS NULL OR display_name = '';
+
+ALTER TABLE users
+  ALTER COLUMN display_name SET NOT NULL;
+
+ALTER TABLE rooms
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
