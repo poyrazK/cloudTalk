@@ -16,6 +16,18 @@ type AuthUserResponse struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
+type PublicProfileResponse struct {
+	ID          string  `json:"id"`
+	Username    string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
+}
+
+type UpdateMeRequest struct {
+	DisplayName *string `json:"display_name"`
+	AvatarURL   *string `json:"avatar_url"`
+}
+
 type RoomResponse struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -98,6 +110,15 @@ func authUserResponseFromModel(u *model.User) AuthUserResponse {
 		Email:       u.Email,
 		CreatedAt:   u.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   u.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func publicProfileResponseFromModel(u *model.User) PublicProfileResponse {
+	return PublicProfileResponse{
+		ID:          u.ID.String(),
+		Username:    u.Username,
+		DisplayName: u.DisplayNameOrUsername(),
+		AvatarURL:   u.AvatarURL,
 	}
 }
 
