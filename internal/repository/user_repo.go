@@ -59,15 +59,26 @@ func (r *UserRepo) getAndHydrateUser(ctx context.Context, query string, arg any,
 	return u, nil
 }
 
-func (r *UserRepo) UpdateProfileFields(ctx context.Context, userID uuid.UUID, displayName, avatarURL string) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE users
-		 SET display_name = $2,
-		     avatar_url = $3,
-		     updated_at = NOW()
-		 WHERE id = $1`,
-		userID, displayName, avatarURL,
-	)
+func (r *UserRepo) UpdateProfileFields(ctx context.Context, userID uuid.UUID, displayName *string, avatarURL *string) error {
+	args := []any{userID}
+	query := "UPDATE users SET updated_at = NOW()"
+
+	if displayName != nil {
+		query += ", display_name = $2"
+		args = append(args, *displayName)
+	}
+	if avatarURL != nil {
+		paramNum := len(args) + 1
+		if *avatarURL == "" {
+			query += fmt.Sprintf(", avatar_url = NULL")
+		} else {
+			query += fmt.Sprintf(", avatar_url = $%d", paramNum)
+			args = append(args, *avatarURL)
+		}
+	}
+	query += " WHERE id = $1"
+
+	_, err := r.db.Exec(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("update user profile: %w", err)
 	}

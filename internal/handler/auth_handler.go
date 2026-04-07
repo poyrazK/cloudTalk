@@ -2,11 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 	"github.com/poyrazk/cloudtalk/internal/repository"
 )
@@ -94,7 +97,12 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, _ := authsvc.UserIDFromContext(r.Context())
 	u, err := h.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		jsonError(w, "user not found", http.StatusNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("me: get user", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	jsonResp(w, http.StatusOK, authUserResponseFromModel(u))
@@ -107,21 +115,19 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	displayName := ""
-	if req.DisplayName != nil {
-		displayName = *req.DisplayName
-	}
-	avatarURL := ""
-	if req.AvatarURL != nil {
-		avatarURL = *req.AvatarURL
-	}
-	if err := h.userRepo.UpdateProfileFields(r.Context(), userID, displayName, avatarURL); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+	if err := h.userRepo.UpdateProfileFields(r.Context(), userID, req.DisplayName, req.AvatarURL); err != nil {
+		slog.Error("update me: update profile", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	u, err := h.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		jsonError(w, "user not found", http.StatusNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("update me: get user", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	jsonResp(w, http.StatusOK, authUserResponseFromModel(u))
@@ -135,7 +141,12 @@ func (h *AuthHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := h.userRepo.GetPublicProfileByID(r.Context(), id)
 	if err != nil {
-		jsonError(w, "user not found", http.StatusNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		slog.Error("get user: lookup", "err", err)
+		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	jsonResp(w, http.StatusOK, publicProfileResponseFromModel(u))
