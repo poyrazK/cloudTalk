@@ -57,11 +57,14 @@ func NewRoomServiceWithPresence(rooms roomRepository, presence roomPresenceReade
 }
 
 func (s *RoomService) Create(ctx context.Context, name, description string, createdBy uuid.UUID) (*model.Room, error) {
+	now := time.Now().UTC()
 	room := &model.Room{
 		ID:          uuid.New(),
 		Name:        name,
 		Description: description,
 		CreatedBy:   createdBy,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := s.rooms.Create(ctx, room); err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
@@ -221,6 +224,9 @@ func (s *RoomService) Members(ctx context.Context, roomID uuid.UUID) ([]*model.R
 		member.Online = s.presence != nil && s.presence.IsOnline(member.UserID)
 		if member.Online {
 			member.LastSeen = nil
+		}
+		if member.DisplayName == "" {
+			member.DisplayName = member.Username
 		}
 	}
 	return members, nil

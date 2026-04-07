@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/poyrazk/cloudtalk/internal/model"
 )
@@ -16,8 +17,8 @@ func NewUserRepo(db *pgxpool.Pool) *UserRepo { return &UserRepo{db: db} }
 
 func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO users (id, username, email, password_hash) VALUES ($1,$2,$3,$4)`,
-		u.ID, u.Username, u.Email, u.PasswordHash,
+		`INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		u.ID, u.Username, u.DisplayName, u.AvatarURL, u.Email, u.PasswordHash, u.CreatedAt, u.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -27,22 +28,36 @@ func (r *UserRepo) Create(ctx context.Context, u *model.User) error {
 
 func (r *UserRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	u := &model.User{}
+	var avatarURL pgtype.Text
 	err := r.db.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, last_seen_at, created_at FROM users WHERE id=$1`, id,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt)
+		`SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE id=$1`, id,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
+	}
+	if avatarURL.Valid {
+		u.AvatarURL = &avatarURL.String
+	}
+	if u.DisplayName == "" {
+		u.DisplayName = u.Username
 	}
 	return u, nil
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	u := &model.User{}
+	var avatarURL pgtype.Text
 	err := r.db.QueryRow(ctx,
-		`SELECT id, username, email, password_hash, last_seen_at, created_at FROM users WHERE email=$1`, email,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt)
+		`SELECT id, username, display_name, avatar_url, email, password_hash, last_seen_at, created_at, updated_at FROM users WHERE email=$1`, email,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &avatarURL, &u.Email, &u.PasswordHash, &u.LastSeenAt, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
+	}
+	if avatarURL.Valid {
+		u.AvatarURL = &avatarURL.String
+	}
+	if u.DisplayName == "" {
+		u.DisplayName = u.Username
 	}
 	return u, nil
 }
