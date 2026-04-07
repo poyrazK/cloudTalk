@@ -13,13 +13,13 @@ cloudTalk uses a two-token scheme:
 
 Signed with HMAC-SHA256 using the `JWT_SECRET` env var. Contains only the user's UUID as the `sub` claim. No user data or roles are embedded.
 
-## Registration Response
-
-`POST /auth/register` returns the created user profile with `display_name` and `avatar_url`.
-
 **Usage:** `Authorization: Bearer <access_token>` on all protected REST endpoints.
 
 For WebSocket: `GET /ws?token=<access_token>`
+
+## Registration Response
+
+`POST /auth/register` returns the created user profile with `display_name` and `avatar_url`.
 
 ## Refresh Token
 
