@@ -17,7 +17,7 @@ Create a new account.
 ```
 **Response** `201`
 ```json
-{ "id": "<uuid>", "username": "alice", "email": "alice@example.com", "created_at": "..." }
+{ "id": "<uuid>", "username": "alice", "display_name": "alice", "avatar_url": null, "email": "alice@example.com", "created_at": "...", "updated_at": "..." }
 ```
 
 ---
@@ -66,7 +66,7 @@ Create a room. Creator is automatically added as a member.
 ```
 **Response** `201`
 ```json
-{ "id": "<uuid>", "name": "general", "description": "...", "created_by": "<uuid>", "created_at": "..." }
+{ "id": "<uuid>", "name": "general", "description": "...", "created_by": "<uuid>", "created_at": "...", "updated_at": "..." }
 ```
 
 ---
@@ -139,6 +139,8 @@ Only room members can access this endpoint. Non-members receive `403`.
   {
     "user_id": "<uuid>",
     "username": "alice",
+    "display_name": "Alice",
+    "avatar_url": null,
     "role": "owner",
     "joined_at": "...",
     "last_seen": null,
@@ -312,6 +314,8 @@ Each item includes:
   {
     "user_id": "<uuid>",
     "username": "alice",
+    "display_name": "Alice",
+    "avatar_url": null,
     "online": true,
     "last_seen": null,
     "unread_count": 3,
