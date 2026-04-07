@@ -18,8 +18,8 @@ func NewRoomRepo(db *pgxpool.Pool) *RoomRepo { return &RoomRepo{db: db} }
 
 func (r *RoomRepo) Create(ctx context.Context, room *model.Room) error {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO rooms (id, name, description, created_by) VALUES ($1,$2,$3,$4)`,
-		room.ID, room.Name, room.Description, room.CreatedBy,
+		`INSERT INTO rooms (id, name, description, created_by, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		room.ID, room.Name, room.Description, room.CreatedBy, room.CreatedAt, room.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create room: %w", err)
@@ -38,8 +38,8 @@ func (r *RoomRepo) Delete(ctx context.Context, id uuid.UUID) error {
 func (r *RoomRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
 	room := &model.Room{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, name, description, created_by, created_at FROM rooms WHERE id=$1`, id,
-	).Scan(&room.ID, &room.Name, &room.Description, &room.CreatedBy, &room.CreatedAt)
+		`SELECT id, name, description, created_by, created_at, updated_at FROM rooms WHERE id=$1`, id,
+	).Scan(&room.ID, &room.Name, &room.Description, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("room not found: %w", err)
 	}
@@ -48,7 +48,7 @@ func (r *RoomRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Room, erro
 
 func (r *RoomRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.Room, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT r.id, r.name, r.description, r.created_by, r.created_at
+		`SELECT r.id, r.name, r.description, r.created_by, r.created_at, r.updated_at
 		 FROM rooms r JOIN room_members m ON r.id=m.room_id
 		 WHERE m.user_id=$1 ORDER BY r.created_at DESC`, userID,
 	)
@@ -60,7 +60,7 @@ func (r *RoomRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]*model.R
 	var rooms []*model.Room
 	for rows.Next() {
 		room := &model.Room{}
-		if err := rows.Scan(&room.ID, &room.Name, &room.Description, &room.CreatedBy, &room.CreatedAt); err != nil {
+		if err := rows.Scan(&room.ID, &room.Name, &room.Description, &room.CreatedBy, &room.CreatedAt, &room.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan room row: %w", err)
 		}
 		rooms = append(rooms, room)
@@ -247,7 +247,7 @@ func (r *RoomRepo) ListRoomMemberIDs(ctx context.Context, roomIDs []uuid.UUID) (
 
 func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*model.RoomMemberDetail, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT rm.user_id, u.username, rm.role, rm.joined_at, u.last_seen_at
+		`SELECT rm.user_id, u.username, u.display_name, u.avatar_url, rm.role, rm.joined_at, u.last_seen_at
 		 FROM room_members rm
 		 JOIN users u ON u.id = rm.user_id
 		 WHERE rm.room_id = $1
@@ -263,8 +263,12 @@ func (r *RoomRepo) ListRoomMembers(ctx context.Context, roomID uuid.UUID) ([]*mo
 	for rows.Next() {
 		member := &model.RoomMemberDetail{}
 		var lastSeen pgtype.Timestamptz
-		if err := rows.Scan(&member.UserID, &member.Username, &member.Role, &member.JoinedAt, &lastSeen); err != nil {
+		var avatarURL pgtype.Text
+		if err := rows.Scan(&member.UserID, &member.Username, &member.DisplayName, &avatarURL, &member.Role, &member.JoinedAt, &lastSeen); err != nil {
 			return nil, fmt.Errorf("scan room member detail row: %w", err)
+		}
+		if avatarURL.Valid {
+			member.AvatarURL = &avatarURL.String
 		}
 		if lastSeen.Valid {
 			t := lastSeen.Time

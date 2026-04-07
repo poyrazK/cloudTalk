@@ -53,7 +53,13 @@ func (h *DMHandler) Messages(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, msgs)
+	out := make([]DirectMessageResponse, 0, len(msgs))
+	for _, msg := range msgs {
+		if converted := dmResponseFromModel(msg); converted != nil {
+			out = append(out, *converted)
+		}
+	}
+	jsonResp(w, http.StatusOK, out)
 }
 
 func (h *DMHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +69,11 @@ func (h *DMHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, counts)
+	out := make([]DMUnreadCountResponse, 0, len(counts))
+	for _, count := range counts {
+		out = append(out, dmUnreadCountResponseFromModel(count))
+	}
+	jsonResp(w, http.StatusOK, out)
 }
 
 func (h *DMHandler) Conversations(w http.ResponseWriter, r *http.Request) {
@@ -80,5 +90,9 @@ func (h *DMHandler) Conversations(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, conversations)
+	out := make([]DMConversationResponse, 0, len(conversations))
+	for _, conversation := range conversations {
+		out = append(out, dmConversationResponseFromModel(conversation))
+	}
+	jsonResp(w, http.StatusOK, out)
 }

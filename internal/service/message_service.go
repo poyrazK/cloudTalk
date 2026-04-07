@@ -209,6 +209,8 @@ func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, 
 		convs = append(convs, &model.DMConversation{
 			UserID:      user.ID,
 			Username:    user.Username,
+			DisplayName: user.DisplayName,
+			AvatarURL:   user.AvatarURL,
 			Online:      online,
 			LastSeen:    lastSeen,
 			UnreadCount: countMap[user.ID],

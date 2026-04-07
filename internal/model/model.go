@@ -12,12 +12,15 @@ const (
 )
 
 type User struct {
-	ID           uuid.UUID  `db:"id"            json:"id"`
-	Username     string     `db:"username"      json:"username"`
-	Email        string     `db:"email"         json:"email"`
+	ID           uuid.UUID  `db:"id"           json:"id"`
+	Username     string     `db:"username"     json:"username"`
+	DisplayName  string     `db:"display_name" json:"display_name"`
+	AvatarURL    *string    `db:"avatar_url"   json:"avatar_url"`
+	Email        string     `db:"email"        json:"email"`
 	PasswordHash string     `db:"password_hash" json:"-"`
-	LastSeenAt   *time.Time `db:"last_seen_at"  json:"last_seen,omitempty"`
-	CreatedAt    time.Time  `db:"created_at"    json:"created_at"`
+	LastSeenAt   *time.Time `db:"last_seen_at" json:"last_seen,omitempty"`
+	CreatedAt    time.Time  `db:"created_at"   json:"created_at"`
+	UpdatedAt    time.Time  `db:"updated_at"   json:"updated_at"`
 }
 
 type Room struct {
@@ -26,6 +29,7 @@ type Room struct {
 	Description string    `db:"description" json:"description"`
 	CreatedBy   uuid.UUID `db:"created_by"  json:"created_by"`
 	CreatedAt   time.Time `db:"created_at"  json:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"  json:"updated_at"`
 }
 
 type RoomMember struct {
@@ -36,12 +40,14 @@ type RoomMember struct {
 }
 
 type RoomMemberDetail struct {
-	UserID   uuid.UUID  `db:"user_id"   json:"user_id"`
-	Username string     `db:"username"  json:"username"`
-	Role     string     `db:"role"      json:"role"`
-	JoinedAt time.Time  `db:"joined_at" json:"joined_at"`
-	LastSeen *time.Time `db:"last_seen_at" json:"last_seen"`
-	Online   bool       `json:"online"`
+	UserID      uuid.UUID  `db:"user_id"      json:"user_id"`
+	Username    string     `db:"username"     json:"username"`
+	DisplayName string     `db:"display_name" json:"display_name"`
+	AvatarURL   *string    `db:"avatar_url"   json:"avatar_url"`
+	Role        string     `db:"role"         json:"role"`
+	JoinedAt    time.Time  `db:"joined_at"    json:"joined_at"`
+	LastSeen    *time.Time `db:"last_seen_at" json:"last_seen"`
+	Online      bool       `json:"online"`
 }
 
 type RoomUnreadCount struct {
@@ -101,6 +107,8 @@ type DMConversationHead struct {
 type DMConversation struct {
 	UserID      uuid.UUID      `json:"user_id"`
 	Username    string         `json:"username"`
+	DisplayName string         `json:"display_name"`
+	AvatarURL   *string        `json:"avatar_url"`
 	Online      bool           `json:"online"`
 	LastSeen    *time.Time     `json:"last_seen"`
 	UnreadCount int            `json:"unread_count"`

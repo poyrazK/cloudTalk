@@ -50,7 +50,7 @@ spec:
                   fieldPath: metadata.name  # pod name as unique consumer group suffix
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10

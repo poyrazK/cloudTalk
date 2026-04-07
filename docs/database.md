@@ -11,9 +11,12 @@ PostgreSQL 16 via `pgx/v5` connection pool.
 |---------------|-------------|--------------------|
 | id            | UUID PK     | gen_random_uuid()  |
 | username      | TEXT UNIQUE |                    |
+| display_name  | TEXT        | public profile name |
+| avatar_url    | TEXT        | optional profile image |
 | email         | TEXT UNIQUE |                    |
 | password_hash | TEXT        | bcrypt             |
 | created_at    | TIMESTAMPTZ |                    |
+| updated_at    | TIMESTAMPTZ |                    |
 
 ### `rooms`
 | Column      | Type        | Notes              |
@@ -23,6 +26,7 @@ PostgreSQL 16 via `pgx/v5` connection pool.
 | description | TEXT        |                    |
 | created_by  | UUID FK     | → users(id)        |
 | created_at  | TIMESTAMPTZ |                    |
+| updated_at  | TIMESTAMPTZ |                    |
 
 ### `room_members`
 | Column    | Type        | Notes              |

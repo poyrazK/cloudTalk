@@ -17,6 +17,10 @@ Signed with HMAC-SHA256 using the `JWT_SECRET` env var. Contains only the user's
 
 For WebSocket: `GET /ws?token=<access_token>`
 
+## Registration Response
+
+`POST /auth/register` returns the created user profile with `display_name` and `avatar_url`.
+
 ## Refresh Token
 
 A cryptographically-random 32-byte value (hex-encoded, 64 chars). Only its SHA-256 hash is persisted — the raw value is never stored.
