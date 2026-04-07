@@ -201,10 +201,6 @@ func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, 
 		if err != nil {
 			return nil, fmt.Errorf("load conversation user: %w", err)
 		}
-		displayName := user.DisplayName
-		if displayName == "" {
-			displayName = user.Username
-		}
 		online := s.presence != nil && s.presence.IsOnline(user.ID)
 		lastSeen := user.LastSeenAt
 		if online {
@@ -213,7 +209,7 @@ func (s *MessageService) DMConversations(ctx context.Context, userID uuid.UUID, 
 		convs = append(convs, &model.DMConversation{
 			UserID:      user.ID,
 			Username:    user.Username,
-			DisplayName: displayName,
+			DisplayName: user.DisplayName,
 			AvatarURL:   user.AvatarURL,
 			Online:      online,
 			LastSeen:    lastSeen,
