@@ -62,6 +62,13 @@ Readiness now depends on:
 - Kafka producer connectivity
 - Kafka consumer session readiness
 
+### Rollback Order
+
+If you need to revert `migrations/007_user_profile_and_room_updated_at.down.sql`, first roll back the app code to the commit before the profile/DTO changes. The repositories in `internal/repository/user_repo.go` and `internal/repository/room_repo.go` expect the new columns, so the safe order is:
+
+1. Revert the application to the pre-profile release.
+2. Run `migrate down 1` to apply `migrations/007_user_profile_and_room_updated_at.down.sql`.
+
 ### Production Config Checklist
 
 Before deploying with `APP_ENV=prod`, ensure:
