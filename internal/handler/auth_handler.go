@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	authsvc "github.com/poyrazk/cloudtalk/internal/auth"
 )
@@ -29,12 +30,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	u, err := h.auth.Register(r.Context(), req.Username, req.Email, req.Password)
+	u, err := h.auth.Register(r.Context(), strings.TrimSpace(req.Username), strings.TrimSpace(req.Email), req.Password)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusConflict)
 		return
 	}
-	jsonResp(w, http.StatusCreated, u)
+	jsonResp(w, http.StatusCreated, authUserResponseFromModel(u))
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {

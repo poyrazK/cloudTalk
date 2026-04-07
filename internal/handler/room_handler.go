@@ -41,7 +41,7 @@ func (h *RoomHandler) Create(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusCreated, room)
+	jsonResp(w, http.StatusCreated, roomResponseFromModel(room))
 }
 
 func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,11 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, rooms)
+	out := make([]RoomResponse, 0, len(rooms))
+	for _, room := range rooms {
+		out = append(out, roomResponseFromModel(room))
+	}
+	jsonResp(w, http.StatusOK, out)
 }
 
 func (h *RoomHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +69,7 @@ func (h *RoomHandler) Get(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "room not found", http.StatusNotFound)
 		return
 	}
-	jsonResp(w, http.StatusOK, room)
+	jsonResp(w, http.StatusOK, roomResponseFromModel(room))
 }
 
 func (h *RoomHandler) Join(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +166,11 @@ func (h *RoomHandler) Members(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, members)
+	out := make([]RoomMemberResponse, 0, len(members))
+	for _, member := range members {
+		out = append(out, roomMemberResponseFromModel(member))
+	}
+	jsonResp(w, http.StatusOK, out)
 }
 
 func (h *RoomHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +207,11 @@ func (h *RoomHandler) UnreadCounts(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, counts)
+	out := make([]RoomUnreadCountResponse, 0, len(counts))
+	for _, count := range counts {
+		out = append(out, roomUnreadCountResponseFromModel(count))
+	}
+	jsonResp(w, http.StatusOK, out)
 }
 
 func (h *RoomHandler) Conversations(w http.ResponseWriter, r *http.Request) {
@@ -216,5 +228,9 @@ func (h *RoomHandler) Conversations(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResp(w, http.StatusOK, conversations)
+	out := make([]RoomConversationResponse, 0, len(conversations))
+	for _, conversation := range conversations {
+		out = append(out, roomConversationResponseFromModel(conversation))
+	}
+	jsonResp(w, http.StatusOK, out)
 }
